@@ -2,30 +2,40 @@
 CC =	gcc
 CFLAGS = -g -std=c++11 -pipe -W -Wall -fPIC
 CPP =	g++
+PROTOC =	protoc
 LINK =	$(CPP)
 
 BRPC_PATH = /home/incubator-brpc-0.9.7
 
-ALL_INCS = -I /usr/include \
+SYS_INCS = -I /usr/include \
 		-I $(BRPC_PATH)/output/include
+
+SRC_INCS = $(SYS_INCS) \
+		-I src
 
 LIB = -lsqlite3 -lpthread -lbrpc -lssl -lcrypto -ldl -lz -lrt -lgflags -lprotobuf -lleveldb
 
-HEADERS = src/carddata.h \
-		src/database.h \
+OBJS_PATH = objs
+PROTOS = $(wildcard $(OBJS_PATH)/*.proto)
+PROTO_OBJS = $(PROTOS:.proto=.pb.o)
+SRC_OBJS = $(patsubst %.cpp, %.o, $(wildcard $(OBJS_PATH)/*.cpp))
 
-SRC_INCS = $(ALL_INCS) \
-		-I src
+BINARY_FILE = output/exodia
 
-BINARY_FILE = bin/exodia
+build: exodia
 
-build: objs/main.o
-		$(LINK) -o $(BINARY_FILE) \
-		objs/main.o \
-		$(LIB)
+exodia: $(PROTO_OBJS) $(SRC_OBJS)
+		@echo ">> Linking $@ <<"
+		@$(LINK) $(LIB) $^ -o $(BINARY_FILE)
 
-objs/main.o:	$(HEADERS) \
-	src/main.cpp
-	$(LINK) -c $(CFLAGS) $(SRC_INCS) \
-		src/main.cpp \
-		-o objs/main.o
+%.pb.cc %.pb.h:%.proto
+		@echo ">> Generating $@ <<"
+		@$(PROTOC) --cpp_out=./$(OBJS_PATH) --proto_path=./$(OBJS_PATH) $<
+
+%.o:%.cpp
+		@echo ">> Compiling $@ <<"
+		@$(LINK) -c $(CFLAGS) $(SRC_INCS) $< -o $@
+
+%.o:%.cc
+		@echo ">> Compiling $@ <<"
+		@$(LINK) -c $(CFLAGS) $(SYS_INCS) $< -o $@

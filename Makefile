@@ -5,9 +5,11 @@
 default: build
 
 clean:
-	rm -rf objs bin
+	@echo "Cleaning"
+	@rm -rf objs output
 
 build:
-	mkdir -p objs bin
-	cp src/Makefile objs/ 
+	@mkdir -p objs output
+	@cp src/* objs/
+	@cp proto/* objs/
 	$(MAKE) -f objs/Makefile

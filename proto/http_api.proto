@@ -1,0 +1,21 @@
+syntax="proto2";
+package exodia;
+
+option cc_generic_services = true;
+
+// message CardInfo {
+// }
+
+message CardRequest {
+    optional int32 uuid = 1;
+};
+
+message CardResponse {
+    required int32 err_no = 1;
+    optional string err_msg = 2;
+    // optional CardInfo info = 3;
+};
+
+service DatabaseService {
+    rpc Card(CardRequest) returns(CardResponse);
+};

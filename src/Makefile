@@ -10,7 +10,7 @@ BRPC_PATH = /home/incubator-brpc-0.9.7
 SYS_INCS = -I /usr/include \
 		-I $(BRPC_PATH)/output/include
 
-SRC_INCS = $(SYS_INCS) \
+ALL_INCS = $(SYS_INCS) \
 		-I src
 
 LIB = -lsqlite3 -lpthread -lbrpc -lssl -lcrypto -ldl -lz -lrt -lgflags -lprotobuf -lleveldb
@@ -34,7 +34,7 @@ exodia: $(PROTO_OBJS) $(SRC_OBJS)
 
 %.o:%.cpp
 		@echo ">> Compiling $@ <<"
-		@$(LINK) -c $(CFLAGS) $(SRC_INCS) $< -o $@
+		@$(LINK) -c $(CFLAGS) $(ALL_INCS) $< -o $@
 
 %.o:%.cc
 		@echo ">> Compiling $@ <<"

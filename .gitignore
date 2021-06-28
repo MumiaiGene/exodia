@@ -34,3 +34,5 @@ objs/*
 output/*
 conf/*
 deploy/*
+.vscode/settings.json
+.gitignore

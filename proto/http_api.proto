@@ -3,17 +3,29 @@ package exodia;
 
 option cc_generic_services = true;
 
-// message CardInfo {
-// }
+message CardInfo {
+    required uint32 id = 1;
+    required string name = 2;
+    required string text = 3;
+    required string type = 4;
+    optional uint32 attack = 5;
+    optional uint32 defense = 6;
+    optional uint32 level = 7;
+    optional string race = 8;
+    optional string attribute = 9;
+    optional string ability = 10;
+    optional string link_mark = 11;
+};
 
 message CardRequest {
     optional int32 uuid = 1;
+    optional string name = 2;
 };
 
 message CardResponse {
     required int32 err_no = 1;
     optional string err_msg = 2;
-    // optional CardInfo info = 3;
+    repeated CardInfo card_list = 3;
 };
 
 service DatabaseService {

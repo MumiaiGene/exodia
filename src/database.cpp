@@ -1,6 +1,6 @@
-#include <sstream>
 #include "database.h"
 
+#include <sstream>
 namespace exodia
 {
 
@@ -67,6 +67,11 @@ int ExodiaDatabase::load_set_strings(const char *filename)
     }
 
     return 0;
+}
+
+ExodiaCardData& ExodiaDatabase::show_card_data_by_id(unsigned int id)
+{
+    return _card_map[id];
 }
 
 } // namespace exodia

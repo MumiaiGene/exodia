@@ -13,3 +13,5 @@ build:
 	@cp src/* objs/
 	@cp proto/* objs/
 	$(MAKE) -f objs/Makefile
+	@rm -rf objs/*.cpp objs/*.h objs/*.proto
+	@echo ">> make successfully <<"

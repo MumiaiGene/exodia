@@ -40,4 +40,4 @@ A brpc project to build a ygo-cards website
 Make sure your code style conforms to [google C++ coding style](https://google.github.io/styleguide/cppguide.html). Indentation is preferred to be 4 spaces.
 ## Feedback and Getting involved
 - Report bugs, ask questions or give suggestions by [Github Issues](https://github.com/MumiaiGene/exodia/issues)
-- Mailing list: [MumiaiGene](genemumiai@qq.com)
+- Subscribe mailing list(genemumiai@qq.com) to get updated with the project

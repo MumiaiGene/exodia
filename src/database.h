@@ -38,7 +38,7 @@ public:
 
     template <typename Func> 
     void traverse_card_map(Func func) const {
-        std::lock_guard<std::mutex> lock(_update_mutex);
+        // std::lock_guard<std::mutex> lock(_update_mutex);
         for (const auto& kv : _card_map) {
             func(kv.second);
         }

@@ -83,7 +83,7 @@ void ExodiaCardData::init_card_data(unsigned int id, sqlite3_stmt* pStmt)
 {
     _card_id = id;
     _ot = sqlite3_column_int(pStmt, 1);
-    // _alias = sqlite3_column_int(pStmt, 2);
+    _alias = sqlite3_column_int(pStmt, 2);
     _setcode = sqlite3_column_int64(pStmt, 3);
     _type = sqlite3_column_int(pStmt, 4);
     _attack = sqlite3_column_int(pStmt, 5);
@@ -104,7 +104,6 @@ const std::string ExodiaCardData::race_string() const
 
 const std::string ExodiaCardData::attr_string() const 
 {
-    std::cout << "attribute: " << _attribute << std::endl;
     int index = string_index(_attribute);
     if (check_card_type((int)ExodiaCardType::TYPE_SPELL)) {
         index = (int)ExodiaCardAttribute::ATTRIBUTE_MAGIC;
@@ -122,9 +121,16 @@ int ExodiaCardData::check_card_type(int n) const
 
 const std::string ExodiaCardData::type_string() const
 {
+    std::string str = std::string("");
     int prefix = string_index(_type & prefix_mask);
     int suffix = string_index(_type & suffix_mask);
-    std::string str = std::string(card_type_map[prefix]) + std::string(card_type_map[suffix]);
+    if (prefix < 0) {
+        prefix = (int)ExodiaCardType::TYPE_NORMAL;
+    }
+
+    if (prefix >= 0 && suffix >= 0) {
+        str = std::string(card_type_map[prefix]) + std::string(card_type_map[suffix]);
+    }
 
     return str;
 }
@@ -148,9 +154,9 @@ const std::string ExodiaCardData::ability() const
         mask = mask >> 1;
     }
 
-    if (delimiter && check_card_type((int)ExodiaCardType::TYPE_EFFECT)) {
+    if (delimiter == 0 && check_card_type((int)ExodiaCardType::TYPE_EFFECT)) {
         // no ability but effect monster
-        int index = string_index((int)ExodiaCardType::TYPE_EFFECT);
+        int index = (int)ExodiaCardType::TYPE_EFFECT;
         str = std::string(card_type_map[index]);
     }
 

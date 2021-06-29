@@ -27,9 +27,12 @@ void DatabaseServiceImpl::Card(google::protobuf::RpcController *controller,
             return;
         }
 
+        if (data.alias() > 0) {
+            return;
+        }
+
         exodia::CardInfo *info = response->add_card_list();
         info->set_id(data.card_id());
-        // info->set_type(data.type());
         info->set_name(data.name());
         info->set_text(data.text());
         info->set_type(data.type_string());

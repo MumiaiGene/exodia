@@ -3,6 +3,7 @@ package common
 import "sync"
 
 var GlobalCache *Cache
+var UserMataCache *Cache
 
 type Cache struct {
 	MatchCache sync.Map
@@ -33,4 +34,5 @@ func (c *Cache) DeleteEntry(id string) error {
 
 func init() {
 	GlobalCache = NewCache()
+	UserMataCache = NewCache()
 }

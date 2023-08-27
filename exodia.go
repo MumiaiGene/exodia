@@ -2,35 +2,34 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
+	"path"
 	"syscall"
 	"time"
 
+	"exodia.cn/pkg/common"
 	"exodia.cn/pkg/handler"
-	"exodia.cn/pkg/manager"
 	"github.com/gin-gonic/gin"
 )
 
 func main() {
 	router := gin.New()
-	router.Use(gin.Recovery())
-	// router.GET("/", hello)
-	router.POST("/challenge", handler.ChallengeHandler)
-	taskRouter := router.Group("/task")
-	{
-		taskRouter.POST("/add", handler.AddTaskHandler)
-		taskRouter.GET("/list", handler.ListTaskHandler)
-	}
+	router.Use(gin.Logger(), gin.Recovery())
+	router.POST("/challenge", handler.EventRouteHandler)
+	// taskRouter := router.Group("/task")
+	// {
+	// 	taskRouter.POST("/add", handler.AddTaskHandler)
+	// 	taskRouter.GET("/list", handler.ListTaskHandler)
+	// }
 
 	srv := http.Server{
-		Addr:    ":8080",
+		Addr:    fmt.Sprintf(":%d", common.Config.Base.Port),
 		Handler: router,
 	}
-
-	manager.TaskManager = manager.CreateManager()
 
 	log.Println("Server starting")
 
@@ -50,6 +49,7 @@ func main() {
 	if err := srv.Shutdown(ctx); err != nil {
 		log.Fatal("Server Shutdown:", err)
 	}
+
 	// catching ctx.Done(). timeout of 5 seconds.
 	select {
 	case <-ctx.Done():
@@ -62,12 +62,15 @@ func main() {
 
 func init() {
 	gin.SetMode(gin.ReleaseMode)
+	gin.DisableConsoleColor()
 
-	logfile := "exodia.log"
-	logFile, err := os.OpenFile(logfile, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0766)
+	logPath := path.Join(common.Config.Base.LogPath, "exodia.log")
+	logFile, err := os.OpenFile(logPath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0766)
 	if err != nil {
 		log.Panic(err)
 	}
 	log.SetOutput(logFile)
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
+
+	gin.DefaultWriter = logFile
 }

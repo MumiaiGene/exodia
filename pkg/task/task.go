@@ -6,7 +6,7 @@ import (
 	"log"
 	"time"
 
-	"exodia.cn/pkg/match"
+	"exodia.cn/pkg/duel"
 )
 
 const (
@@ -45,7 +45,7 @@ type Task struct {
 	Timer      *time.Ticker
 }
 
-func (task *Task) DoTask(client *match.MatchClient) {
+func (task *Task) DoTask(client *duel.MatchClient) {
 	retry := MAX_RETRY
 	var hour int64
 	var minute int64
@@ -103,7 +103,7 @@ func (task *Task) DoTask(client *match.MatchClient) {
 	}
 }
 
-func (task *Task) production(client *match.MatchClient) (bool, error) {
+func (task *Task) production(client *duel.MatchClient) (bool, error) {
 	var flag bool
 
 	if task.SignUpAt == 0 {
@@ -137,7 +137,7 @@ func (task *Task) production(client *match.MatchClient) (bool, error) {
 			}
 		}
 		if task.AutoSignUp {
-			err := client.SignUpMatch(task.Id)
+			err := client.SignUpMatch(task.Id, false)
 			if err != nil {
 				return false, err
 			}

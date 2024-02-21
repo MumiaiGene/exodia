@@ -14,12 +14,6 @@ const (
 
 // TODO: replace with protobuf
 
-type ChallengeParams struct {
-	Challenge string `json:"challenge"`
-	Token     string `json:"token"`
-	Type      string `json:"type"`
-}
-
 type EventHeader struct {
 	EventId    string `json:"event_id"`
 	Token      string `json:"token"`
@@ -44,7 +38,7 @@ type EventHandler interface {
 	Handler(*gin.Context) (int, error)
 }
 
-var TaskHandlerMap = map[string]EventHandler{
+var EventHandlerMap = map[string]EventHandler{
 	EVENT_RECV_MESSAGE: &MessageHandler{},
 }
 
@@ -56,26 +50,26 @@ func EventRouteHandler(ctx *gin.Context) {
 		ctx.JSON(
 			http.StatusBadRequest,
 			gin.H{
-				"error": "invalid request body",
+				"msg": "invalid request body",
 			},
 		)
 		return
 	}
 
-	log.Printf("type: %s", req.Header.EventType)
-	if _, ok := TaskHandlerMap[req.Header.EventType]; !ok {
+	log.Printf("event_id: %s, time: %s", req.Header.EventId, req.Header.CreateTime)
+	if _, ok := EventHandlerMap[req.Header.EventType]; !ok {
 		ctx.JSON(
 			http.StatusNotFound,
 			gin.H{
-				"error": "invalid event type",
+				"msg": "invalid event type",
 			},
 		)
 		return
 	}
-	code, err := TaskHandlerMap[req.Header.EventType].Handler(ctx)
+	code, err := EventHandlerMap[req.Header.EventType].Handler(ctx)
 	if err != nil {
 		resp = gin.H{
-			"error": err.Error(),
+			"msg": err.Error(),
 		}
 	}
 

@@ -19,12 +19,23 @@ import (
 func main() {
 	router := gin.New()
 	router.Use(gin.Logger(), gin.Recovery())
-	router.POST("/challenge", handler.EventRouteHandler)
-	// taskRouter := router.Group("/task")
-	// {
-	// 	taskRouter.POST("/add", handler.AddTaskHandler)
-	// 	taskRouter.GET("/list", handler.ListTaskHandler)
-	// }
+
+	// Bot Router
+	router.POST("/event", handler.EventRouteHandler)
+	router.POST("/message", handler.MessageRouteHandler)
+	router.POST("/challenge", handler.ChallengeHandler)
+
+	// API Router
+	userRouter := router.Group("/user")
+	{
+		userRouter.POST("/add", handler.AddUserRouter)
+		userRouter.GET("/list", handler.ListUserRouter)
+	}
+	matchRouter := router.Group("/match")
+	{
+		matchRouter.POST("/signup", handler.SignUpMatchRouter)
+		matchRouter.POST("/list", handler.ListMatchRouter)
+	}
 
 	srv := http.Server{
 		Addr:    fmt.Sprintf(":%d", common.Config.Base.Port),

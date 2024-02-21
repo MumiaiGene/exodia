@@ -2,9 +2,9 @@ package message
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"log"
+	"strings"
 
 	"exodia.cn/pkg/common"
 	"github.com/google/uuid"
@@ -13,15 +13,15 @@ import (
 	larkim "github.com/larksuite/oapi-sdk-go/v3/service/im/v1"
 )
 
+const (
+	LoginSuccess = "ctp_AAgl7ar1SWwK"
+)
+
 var client *MessageClient
 
-type Content struct {
-	Text string `json:"text"`
-}
-
 type Message struct {
-	Type    string  `json:"msg_type"`
-	Content Content `json:"content"`
+	Type    string `json:"msg_type"`
+	Content string `json:"content"`
 }
 
 type MessageClient struct {
@@ -37,36 +37,35 @@ func NewMessageClient() *MessageClient {
 	return client
 }
 
-func NewTextMessage(text string) *Message {
-	msg := &Message{
-		Type: "text",
-		Content: Content{
-			Text: text,
-		},
+func SendTextMessage(text string, receiveId string) error {
+	msg := newTextMessage(text)
+	if msg == nil {
+		return errors.New("failed to build text message")
 	}
-
-	return msg
+	return client.sendMessage(msg, receiveId)
 }
 
-func SendTextMessage(text string, receiveId string) error {
-	msg := NewTextMessage(text)
+func SendInteractive(receiveId string, templateId string, v TemplateVariable) error {
+	msg := newTemplateInteractive(templateId, v)
+	if msg == nil {
+		return errors.New("failed to build interactive message")
+	}
 	return client.sendMessage(msg, receiveId)
 }
 
 func (c *MessageClient) sendMessage(msg *Message, receiveId string) error {
-	content, err := json.Marshal(msg.Content)
-	if err != nil {
-		log.Println(err)
-		return err
+	receiveIdType := "open_id"
+	if strings.HasPrefix(receiveId, "oc") {
+		receiveIdType = "chat_id"
 	}
 
 	// 创建请求对象
 	req := larkim.NewCreateMessageReqBuilder().
-		ReceiveIdType("open_id").
+		ReceiveIdType(receiveIdType).
 		Body(larkim.NewCreateMessageReqBodyBuilder().
 			ReceiveId(receiveId).
-			MsgType("text").
-			Content(string(content)).
+			MsgType(msg.Type).
+			Content(string(msg.Content)).
 			Uuid(uuid.New().String()).
 			Build()).
 		Build()

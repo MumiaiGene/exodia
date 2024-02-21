@@ -2,107 +2,129 @@ package handler
 
 import (
 	"fmt"
-	"log"
+	"net/http"
 
-	"exodia.cn/pkg/common"
-	"exodia.cn/pkg/match"
+	"exodia.cn/pkg/duel"
 	"exodia.cn/pkg/message"
-	"exodia.cn/pkg/task"
+	"github.com/gin-gonic/gin"
+	"github.com/gin-gonic/gin/binding"
 )
 
 const (
 	LoginKeyPattern  = "登录"
-	PhoneKeyPattern  = "^1[0-9]{10}$"
-	VerifyKeyPattern = "^[0-9]{5}$"
+	PhoneKeyPattern  = "^(@.+ )*1[0-9]{10}"
+	VerifyKeyPattern = "^(@.+ )*[0-9]{5}$"
+	LogoutKeyPattern = "登出"
 
 	LoginReply    = "请输入手机号"
 	PhoneReply    = "请输入验证码"
 	VerifyReply   = "登录成功"
 	UnLoggedReply = "请先登录"
+	RepeatedReply = "不需要重复登录"
+
+	SelectRegion = "先选择地区"
 )
 
-const (
-	StateInitial    UserState = 0
-	StateWaitPhone  UserState = 1
-	StateWaitVerify UserState = 2
-	StateLoggedIn   UserState = 3
-	StateExpired    UserState = 4
-)
-
-type UserState int
-
-var InvalidInputMap = map[UserState]string{
-	StateInitial:    "未识别的指令: %s",
-	StateWaitPhone:  "手机号格式不正确: %s",
-	StateWaitVerify: "验证码不正确: %s",
+var InvalidInputMap = map[duel.UserState]string{
+	duel.StateInitial:    "未识别的指令: %s",
+	duel.StateWaitPhone:  "手机号格式不正确: %s",
+	duel.StateWaitVerify: "验证码不正确: %s",
 }
 
-type UserMataData struct {
-	UserId string
-	State  UserState
-	Phone  string
-	Token  string
-	Sub    *task.Subscribe
-}
-
-func LoginHandler(openId string, text string) {
-	meta := loadUserMetaData(openId)
-	meta.State = StateWaitPhone
-	meta.Phone = ""
-	meta.Token = ""
-
-	message.SendTextMessage(LoginReply, openId)
-}
-
-func PhoneHandler(openId string, text string) {
-	meta := loadUserMetaData(openId)
-	client := match.NewMatchClient("")
-
-	err := client.SendVerifyCode(text)
-	if err != nil {
-		message.SendTextMessage(err.Error(), openId)
+func LoginHandler(openId string, text string, recvId string) {
+	state := duel.GetUserState(openId)
+	if state == duel.StateLoggedIn {
+		message.SendTextMessage(RepeatedReply, recvId)
 		return
 	}
 
-	meta.State = StateWaitVerify
-	meta.Phone = text
-	meta.Token = ""
+	duel.PrepareUser(openId)
 
-	message.SendTextMessage(PhoneReply, openId)
+	message.SendTextMessage(LoginReply, recvId)
 }
 
-func VerifyHandler(openId string, text string) {
-	meta := loadUserMetaData(openId)
-	client := match.NewMatchClient("")
-
-	token, err := client.Login(meta.Phone, text)
+func PhoneHandler(openId string, text string, recvId string) {
+	state := duel.GetUserState(openId)
+	if state != duel.StateWaitPhone {
+		return
+	}
+	err := duel.SendVerifyCode(openId, text)
 	if err != nil {
-		message.SendTextMessage(err.Error(), openId)
+		message.SendTextMessage(err.Error(), recvId)
+		return
+	}
+	message.SendTextMessage(PhoneReply, recvId)
+}
+
+func VerifyHandler(openId string, text string, recvId string) {
+	state := duel.GetUserState(openId)
+	if state != duel.StateWaitVerify {
+		return
+	}
+	err := duel.Login(openId, text)
+	if err != nil {
+		message.SendTextMessage(err.Error(), recvId)
 		return
 	}
 
-	meta.State = StateLoggedIn
-	meta.Token = token
+	region_list := make([]message.SelectOption, 0)
+	city_list := make([]message.SelectOption, 0)
+	for region, _ := range duel.CityMap {
+		region_list = append(region_list, message.SelectOption{Text: region, Value: region})
+	}
+	city_list = append(city_list, message.SelectOption{Text: SelectRegion, Value: SelectRegion})
 
-	log.Printf("succeed to get token for %s, token: %s", openId, token)
-	message.SendTextMessage(VerifyReply, openId)
-}
-
-func InvalidHandler(openId string, text string) {
-	meta := loadUserMetaData(openId)
-
-	message.SendTextMessage(fmt.Sprintf(InvalidInputMap[meta.State], text), openId)
-}
-
-func loadUserMetaData(openId string) *UserMataData {
-	model, _ := common.UserMataCache.LoadEntry(openId)
-	if model != nil {
-		log.Printf("user id: %s, state: %d", model.(*UserMataData).UserId, model.(*UserMataData).State)
-		return model.(*UserMataData)
+	t := message.LoginSuccessVariable{
+		OpenId:     openId,
+		UserId:     duel.GetUserId(openId),
+		RegionText: SelectRegion,
+		CityText:   SelectRegion,
+		RegionList: region_list,
+		CityList:   city_list,
 	}
 
-	meta := &UserMataData{UserId: openId, State: StateInitial}
-	common.UserMataCache.SaveEntry(meta.UserId, meta)
+	message.SendInteractive(recvId, message.LoginSuccess, t)
+}
 
-	return meta
+func InvalidHandler(openId string, text string, recvId string) {
+	state := duel.GetUserState(openId)
+
+	message.SendTextMessage(fmt.Sprintf(InvalidInputMap[state], text), recvId)
+}
+
+func ListUserRouter(ctx *gin.Context) {
+	users := duel.ListUser()
+	code := http.StatusOK
+	resp := gin.H{"msg": "ok"}
+	if len(users) == 0 {
+		code = http.StatusNotFound
+		resp["msg"] = "empyt user list"
+	}
+
+	resp["users"] = users
+
+	ctx.JSON(
+		code, resp,
+	)
+}
+
+func AddUserRouter(ctx *gin.Context) {
+	var new duel.UserMataData
+	err := ctx.ShouldBindBodyWith(&new, binding.JSON)
+	if err != nil {
+		ctx.JSON(
+			http.StatusBadRequest,
+			gin.H{
+				"msg": "invalid request body",
+			},
+		)
+		return
+	}
+
+	duel.UpdateUser(new.UserId, &new)
+
+	ctx.JSON(
+		http.StatusOK,
+		gin.H{"msg": "ok"},
+	)
 }

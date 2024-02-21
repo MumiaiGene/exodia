@@ -42,11 +42,17 @@ type MatchConfig struct {
 	Token     string `mapstructure:"token"`
 }
 
+type CaptchaConfig struct {
+	Secret string `mapstructure:"secret"`
+	Iv     string `mapstructure:"iv"`
+}
+
 type ExodiaConfig struct {
-	Base  BaseConfig  `mapstructure:"base"`
-	Match MatchConfig `mapstructure:"match"`
-	Bot   BotConfig   `mapstructure:"bot"`
-	Wx    WxConfig    `mapstructure:"wx"`
+	Base    BaseConfig    `mapstructure:"base"`
+	Match   MatchConfig   `mapstructure:"match"`
+	Captcha CaptchaConfig `mapstructure:"captcha"`
+	Bot     BotConfig     `mapstructure:"bot"`
+	Wx      WxConfig      `mapstructure:"wx"`
 }
 
 func init() {

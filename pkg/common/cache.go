@@ -3,7 +3,6 @@ package common
 import "sync"
 
 var GlobalCache *Cache
-var UserMataCache *Cache
 
 type Cache struct {
 	MatchCache sync.Map
@@ -32,7 +31,11 @@ func (c *Cache) DeleteEntry(id string) error {
 	return nil
 }
 
+func (c *Cache) ListEntry(f func(key, value any) bool) {
+	bucket := &c.MatchCache
+	bucket.Range(f)
+}
+
 func init() {
 	GlobalCache = NewCache()
-	UserMataCache = NewCache()
 }

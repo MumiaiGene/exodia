@@ -1,5 +1,5 @@
 # exodia
-A brpc project to build a ygo-cards website
+A Golang project to subscribe duel matches
 
 ## QuickStart
 ```text
@@ -37,7 +37,7 @@ A brpc project to build a ygo-cards website
 }
 ```
 ## Contribute code
-Make sure your code style conforms to [google C++ coding style](https://google.github.io/styleguide/cppguide.html). Indentation is preferred to be 4 spaces.
+Make sure your code style conforms to [google Go coding style](https://google.github.io/styleguide/go/index).
 ## Feedback and Getting involved
 - Report bugs, ask questions or give suggestions by [Github Issues](https://github.com/MumiaiGene/exodia/issues)
 - Subscribe mailing list(genemumiai@qq.com) to get updated with the project

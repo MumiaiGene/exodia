@@ -7,7 +7,7 @@ import (
 	"log"
 	"time"
 
-	"exodia.cn/pkg/match"
+	"exodia.cn/pkg/duel"
 	"exodia.cn/pkg/message"
 )
 
@@ -22,13 +22,13 @@ type SubscribeResult struct {
 }
 
 type SubscribeParam struct {
-	AreaId     string            `json:"area_id"`
-	ZoneId     string            `json:"zone_id"`
-	IsOcg      bool              `json:"is_ocg"`
-	AutoSignUp bool              `json:"auto_signup"`
-	Type       []match.MatchType `json:"types"`
-	Interval   int               `json:"interval"`
-	Token      string            `json:"token"`
+	AreaId     string           `json:"area_id"`
+	ZoneId     string           `json:"zone_id"`
+	IsOcg      bool             `json:"is_ocg"`
+	AutoSignUp bool             `json:"auto_signup"`
+	Type       []duel.MatchType `json:"types"`
+	Interval   int              `json:"interval"`
+	Token      string           `json:"token"`
 }
 
 type Subscribe struct {
@@ -37,7 +37,7 @@ type Subscribe struct {
 	taskChannel chan *Task
 	taskList    []*Task
 	cancelFunc  context.CancelFunc
-	client      *match.MatchClient
+	client      *duel.MatchClient
 	timer       *time.Ticker
 }
 
@@ -46,7 +46,7 @@ func CreateSubscribe(userId string, params SubscribeParam) *Subscribe {
 	s.UserId = userId
 	s.Params = params
 	s.taskChannel = make(chan *Task, 100)
-	s.client = match.NewMatchClient(s.Params.Token)
+	s.client = duel.NewMatchClient(s.Params.Token)
 
 	go s.Start()
 	return s
@@ -113,14 +113,14 @@ func (s *Subscribe) AddTask(task *Task) {
 // }
 
 func (s *Subscribe) searchTask() ([]*SubscribeResult, error) {
-	req := &match.ListMatchesRequest{
+	req := &duel.ListParams{
 		AreaId: s.Params.AreaId,
-		ZoneId: s.Params.ZoneId,
+		CityId: s.Params.ZoneId,
 		IsOcg:  s.Params.IsOcg,
 		Type:   s.Params.Type,
 	}
 
-	matches, err := s.client.ListMatches(req)
+	resp, err := s.client.ListMatches(req)
 	if err != nil {
 		log.Printf("Failed to find match, err: %v", err)
 		return nil, errors.New("list matches error")
@@ -128,7 +128,7 @@ func (s *Subscribe) searchTask() ([]*SubscribeResult, error) {
 
 	result := make([]*SubscribeResult, 0)
 
-	for _, match := range matches {
+	for _, match := range resp.Matches {
 		id := fmt.Sprint(match.Id)
 		if s.hasSubscribed(id) {
 			continue

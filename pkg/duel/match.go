@@ -48,9 +48,11 @@ type MatchInfo struct {
 }
 
 type InfoResponse struct {
-	Info     MatchInfo `json:"info"`
-	Role     string    `json:"role"`
-	IsSignup bool      `json:"isSignup"`
+	Name     string      `json:"Name"`
+	Info     MatchInfo   `json:"info"`
+	Role     string      `json:"role"`
+	IsSignup bool        `json:"isSignup"`
+	Bottom   MatchBottom `json:"bottom"`
 }
 
 // ListResponse

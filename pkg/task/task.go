@@ -1,13 +1,17 @@
 package task
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
 	"time"
 
 	"exodia.cn/pkg/duel"
+	"exodia.cn/pkg/message"
 )
+
+var GlobalManager *TaskManager
 
 const (
 	UnStartedText  = "发现比赛: %s, 比赛时间: %s, 报名未开始"
@@ -36,38 +40,92 @@ const (
 type MatchStatus uint32
 
 type Task struct {
-	Id         string
-	Name       string
-	Interval   int
-	SignUpAt   int64 `json:"signup_at"`
-	StartAt    int64 `json:"start_at"`
-	AutoSignUp bool  `json:"auto_signup"`
-	Timer      *time.Ticker
+	Id          string
+	UserId      string
+	Name        string
+	Interval    int
+	SignUpAt    int64 `json:"signup_at"`
+	StartAt     int64 `json:"start_at"`
+	AutoSignUp  bool  `json:"auto_signup"`
+	NeedCaptcha bool
+	Token       string
+	Timer       *time.Ticker
 }
 
-func (task *Task) DoTask(client *duel.MatchClient) {
+type TaskManager struct {
+	taskChannel chan *Task
+	taskList    []*Task
+	cancelFunc  context.CancelFunc
+}
+
+func CreateManager() *TaskManager {
+	m := new(TaskManager)
+	m.taskChannel = make(chan *Task, 100)
+	return m
+}
+
+func (m *TaskManager) StartConsume() {
+	ctx, cancel := context.WithCancel(context.TODO())
+	m.cancelFunc = cancel
+
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case t := <-m.taskChannel:
+				m.AddTask(t)
+			}
+		}
+	}()
+}
+
+func (m *TaskManager) StopConsume() {
+	for _, task := range m.taskList {
+		task.Timer.Stop()
+	}
+	if m.cancelFunc != nil {
+		m.cancelFunc()
+	}
+}
+
+func (m *TaskManager) AddTask(task *Task) {
+	m.taskList = append(m.taskList, task)
+	task.Timer = time.NewTicker(time.Duration(task.Interval) * time.Second)
+	log.Printf("Succeed to add task: %s", task.Name)
+
+	go task.DoTask()
+}
+
+func (m *TaskManager) SendTask(task *Task) {
+	m.taskChannel <- task
+}
+
+func (task *Task) DoTask() {
 	retry := MAX_RETRY
 	var hour int64
 	var minute int64
 	var second int64
+
 	for range task.Timer.C {
-		Succeed, err := task.production(client)
+		Succeed, err := task.production()
 		if err != nil {
 			retry--
-			// SendTextMessage(fmt.Sprintf(DoTaskError, err.Error()))
+
+			message.SendTextMessage(fmt.Sprintf(DoTaskError, err.Error()), task.UserId)
 			log.Printf("Failed to do task, name: %s, err: %v", task.Name, err)
 		} else if retry < MAX_RETRY {
 			retry++
 		}
 
 		if Succeed {
-			// SendTextMessage(fmt.Sprintf(SignedText, task.Name))
+			message.SendTextMessage(fmt.Sprintf(SignedText, task.Name), task.UserId)
 			log.Printf(SignedText, task.Name)
 			break
 		}
 
 		if task.StartAt <= time.Now().Unix() {
-			// SendTextMessage(fmt.Sprintf(START_TEXT_FORMAT, task.Name))
+			message.SendTextMessage(fmt.Sprintf(START_TEXT_FORMAT, task.Name), task.UserId)
 			break
 		}
 
@@ -78,33 +136,35 @@ func (task *Task) DoTask(client *duel.MatchClient) {
 			if hour != duration/3600 {
 				hour = duration / 3600
 				text = fmt.Sprintf(COUNTDOWN_TEXT_FORMAT, task.Name, duration/3600, "小时")
-				// SendTextMessage(text)
+				message.SendTextMessage(text, task.UserId)
 			}
 		} else if duration >= 60 {
 			if minute != duration/600 {
 				minute = duration / 600
 				text = fmt.Sprintf(COUNTDOWN_TEXT_FORMAT, task.Name, duration/60, "分钟")
-				// SendTextMessage(text)
+				message.SendTextMessage(text, task.UserId)
 			}
 		} else if duration >= 10 {
 			if second != duration/10 {
 				second = duration / 10
 				text = fmt.Sprintf(COUNTDOWN_TEXT_FORMAT, task.Name, duration, "秒")
-				// SendTextMessage(text)
+				message.SendTextMessage(text, task.UserId)
 			}
 		}
 
-		log.Println(text)
+		// log.Println(text)
 
 		if retry == 0 {
-			// SendTextMessage(RetryErrorText)
+			message.SendTextMessage(RetryErrorText, task.UserId)
 			break
 		}
 	}
 }
 
-func (task *Task) production(client *duel.MatchClient) (bool, error) {
+func (task *Task) production() (bool, error) {
 	var flag bool
+
+	client := duel.NewMatchClient(task.Token)
 
 	if task.SignUpAt == 0 {
 		data, err := client.ShowMatchDetail(task.Id)
@@ -131,13 +191,17 @@ func (task *Task) production(client *duel.MatchClient) (bool, error) {
 				log.Printf("Failed to show match detail, err: %v", err)
 				return false, errors.New("show match error")
 			}
+			log.Printf("报名人数: %d/%d", data.Info.Player.SignCount, data.Info.Player.PlayerCount)
 			if data.Info.Player.SignCount == data.Info.Player.PlayerCount {
-				log.Printf("报名已满: %d/%d", data.Info.Player.SignCount, data.Info.Player.PlayerCount)
+				return false, nil
+			}
+			if data.Bottom.Title.Status == "待开放" {
+				log.Printf("报名待开放: %s", task.Name)
 				return false, nil
 			}
 		}
 		if task.AutoSignUp {
-			err := client.SignUpMatch(task.Id, false)
+			err := client.SignUpMatch(task.Id, task.NeedCaptcha)
 			if err != nil {
 				return false, err
 			}
@@ -146,4 +210,8 @@ func (task *Task) production(client *duel.MatchClient) (bool, error) {
 	}
 
 	return false, nil
+}
+
+func init() {
+	GlobalManager = CreateManager()
 }

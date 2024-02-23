@@ -105,7 +105,7 @@ func (s *Subscribe) AddTask(task *Task) {
 	task.Timer = time.NewTicker(time.Duration(task.Interval) * time.Second)
 	log.Printf("Succeed to add task: %s", task.Name)
 
-	go task.DoTask(s.client)
+	go task.DoTask()
 }
 
 // func (m *Manager) ListTask() []*Task {

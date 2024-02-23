@@ -138,10 +138,10 @@ func (*MessageHandler) Handler(ctx *gin.Context) (int, error) {
 func SelectRegionHandler(req *MessageActionRequest) (int, *message.InteractiveContent, error) {
 	region_list := make([]message.SelectOption, 0)
 	city_list := make([]message.SelectOption, 0)
-	for region, _ := range duel.CityMap {
+	for region := range duel.CityMap {
 		region_list = append(region_list, message.SelectOption{Text: region, Value: region})
 	}
-	for city, _ := range duel.CityMap[req.Action.Option] {
+	for city := range duel.CityMap[req.Action.Option] {
 		city_list = append(city_list, message.SelectOption{Text: city, Value: city})
 	}
 	vars := message.LoginSuccessVariable{
@@ -167,10 +167,10 @@ func SelectRegionHandler(req *MessageActionRequest) (int, *message.InteractiveCo
 func SelectCityHandler(req *MessageActionRequest) (int, *message.InteractiveContent, error) {
 	region_list := make([]message.SelectOption, 0)
 	city_list := make([]message.SelectOption, 0)
-	for region, _ := range duel.CityMap {
+	for region := range duel.CityMap {
 		region_list = append(region_list, message.SelectOption{Text: region, Value: region})
 	}
-	for city, _ := range duel.CityMap[req.Action.Value.Region] {
+	for city := range duel.CityMap[req.Action.Value.Region] {
 		city_list = append(city_list, message.SelectOption{Text: city, Value: city})
 	}
 	vars := message.LoginSuccessVariable{

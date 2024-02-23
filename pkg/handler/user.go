@@ -69,7 +69,7 @@ func VerifyHandler(openId string, text string, recvId string) {
 
 	region_list := make([]message.SelectOption, 0)
 	city_list := make([]message.SelectOption, 0)
-	for region, _ := range duel.CityMap {
+	for region := range duel.CityMap {
 		region_list = append(region_list, message.SelectOption{Text: region, Value: region})
 	}
 	city_list = append(city_list, message.SelectOption{Text: SelectRegion, Value: SelectRegion})

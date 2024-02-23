@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
@@ -12,6 +13,8 @@ import (
 
 	"exodia.cn/pkg/common"
 )
+
+const DefaultUA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.0.0 Safari/537.36 MicroMessenger/6.8.0(0x16080000) NetType/WIFI MiniProgramEnv/Mac MacWechat/WMPF MacWechat/3.8.6(0x13080610) XWEB/1156"
 
 type MatchClient struct {
 	client *http.Client
@@ -29,13 +32,26 @@ func NewMatchClient(token string) *MatchClient {
 	return client
 }
 
+func (c *MatchClient) addCommonHeader(r *http.Request) {
+	r.Header.Add("accept", "*/*")
+	r.Header.Add("sec-fetch-site", "cross-site")
+	r.Header.Add("sec-fetch-mode", "cors")
+	r.Header.Add("sec-fetch-dest", "empty")
+	r.Header.Add("accept-encoding", "gzip, deflate, br")
+	r.Header.Add("accept-language", "zh-CN,zh;q=0.9")
+	r.Header.Add("xweb_xhr", "1")
+	r.Header.Add("referer", "https://servicewechat.com/wx0f162bee4c2192be/107/page-frame.html")
+	r.Header.Add("user-agent", DefaultUA)
+}
+
 func (c *MatchClient) doPost(url string, body string, sig bool) (json.RawMessage, error) {
 	var result MatchResponse
 	r, err := http.NewRequest("POST", url, strings.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
-	r.Header.Add("Content-Type", "application/x-www-form-urlencoded")
+	c.addCommonHeader(r)
+	r.Header.Add("content-type", "application/x-www-form-urlencoded")
 	if c.token != "" {
 		r.Header.Add("authorization", "Bearer "+c.token)
 	}
@@ -77,6 +93,7 @@ func (c *MatchClient) doGet(url string, sig bool) (json.RawMessage, error) {
 	if err != nil {
 		return nil, err
 	}
+	c.addCommonHeader(r)
 	if c.token != "" {
 		r.Header.Add("authorization", "Bearer "+c.token)
 	}
@@ -86,7 +103,10 @@ func (c *MatchClient) doGet(url string, sig bool) (json.RawMessage, error) {
 			return nil, err
 		}
 		r.Header.Add("signature", signature)
+		log.Printf("url: %s, signature: %s", url, signature)
 	}
+
+	log.Printf("url: %s, authorization: %s", url, "Bearer "+c.token)
 
 	resp, err := c.client.Do(r)
 	if err != nil {

@@ -13,6 +13,7 @@ import (
 
 	"exodia.cn/pkg/common"
 	"exodia.cn/pkg/handler"
+	"exodia.cn/pkg/task"
 	"github.com/gin-gonic/gin"
 )
 
@@ -35,7 +36,10 @@ func main() {
 	{
 		matchRouter.POST("/signup", handler.SignUpMatchRouter)
 		matchRouter.POST("/list", handler.ListMatchRouter)
+		matchRouter.POST("/schedule", handler.ScheduleMatchRouter)
 	}
+
+	task.GlobalManager.StartConsume()
 
 	srv := http.Server{
 		Addr:    fmt.Sprintf(":%d", common.Config.Base.Port),
@@ -54,6 +58,8 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 	log.Println("Shutdown Server ...")
+
+	task.GlobalManager.StopConsume()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

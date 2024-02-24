@@ -136,18 +136,20 @@ func (*MessageHandler) Handler(ctx *gin.Context) (int, error) {
 }
 
 func SelectRegionHandler(req *MessageActionRequest) (int, *message.InteractiveContent, error) {
+	select_region := req.Action.Option
 	region_list := make([]message.SelectOption, 0)
 	city_list := make([]message.SelectOption, 0)
+
 	for region := range duel.CityMap {
 		region_list = append(region_list, message.SelectOption{Text: region, Value: region})
 	}
-	for city := range duel.CityMap[req.Action.Option] {
+	for city := range duel.CityMap[select_region] {
 		city_list = append(city_list, message.SelectOption{Text: city, Value: city})
 	}
 	vars := message.LoginSuccessVariable{
 		UserId:     duel.GetUserId(req.OpenId),
 		OpenId:     req.OpenId,
-		RegionText: req.Action.Option,
+		RegionText: select_region,
 		CityText:   SelectRegion,
 		RegionList: region_list,
 		CityList:   city_list,
@@ -160,27 +162,32 @@ func SelectRegionHandler(req *MessageActionRequest) (int, *message.InteractiveCo
 			Variable: vars,
 		},
 	}
-	duel.SetCityCode(req.OpenId, duel.CityMap[req.Action.Option][SelectRegion])
+
 	return http.StatusOK, resp, nil
 }
 
 func SelectCityHandler(req *MessageActionRequest) (int, *message.InteractiveContent, error) {
+	select_region := req.Action.Value.Region
+	select_city := req.Action.Option
 	region_list := make([]message.SelectOption, 0)
 	city_list := make([]message.SelectOption, 0)
+
 	for region := range duel.CityMap {
 		region_list = append(region_list, message.SelectOption{Text: region, Value: region})
 	}
-	for city := range duel.CityMap[req.Action.Value.Region] {
+	for city := range duel.CityMap[select_region] {
 		city_list = append(city_list, message.SelectOption{Text: city, Value: city})
 	}
 	vars := message.LoginSuccessVariable{
 		UserId:     duel.GetUserId(req.OpenId),
 		OpenId:     req.OpenId,
-		RegionText: req.Action.Value.Region,
-		CityText:   req.Action.Option,
+		RegionText: select_region,
+		CityText:   select_city,
 		RegionList: region_list,
 		CityList:   city_list,
 	}
+
+	duel.SetCityCode(req.OpenId, duel.CityMap[select_region][select_city])
 
 	resp := &message.InteractiveContent{
 		Type: "template",

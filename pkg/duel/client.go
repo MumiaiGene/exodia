@@ -24,9 +24,11 @@ type MatchClient struct {
 
 func NewMatchClient(token string) *MatchClient {
 	client := &MatchClient{
-		client: &http.Client{},
-		host:   common.Config.Match.Host,
-		token:  token,
+		client: &http.Client{
+			Timeout: 1 * time.Second,
+		},
+		host:  common.Config.Match.Host,
+		token: token,
 	}
 
 	return client
@@ -103,11 +105,9 @@ func (c *MatchClient) doGet(url string, sig bool) (json.RawMessage, error) {
 			return nil, err
 		}
 		r.Header.Add("signature", signature)
-		log.Printf("url: %s, signature: %s", url, signature)
 	}
 
-	log.Printf("url: %s, authorization: %s", url, "Bearer "+c.token)
-
+	start := time.Now()
 	resp, err := c.client.Do(r)
 	if err != nil {
 		return nil, err
@@ -119,6 +119,7 @@ func (c *MatchClient) doGet(url string, sig bool) (json.RawMessage, error) {
 	if err != nil {
 		return nil, err
 	}
+	log.Printf("%s latency: %v", url, time.Since(start))
 
 	if err := json.Unmarshal(data, &result); err != nil {
 		return nil, err

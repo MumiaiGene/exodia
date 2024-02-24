@@ -13,7 +13,7 @@ SYS_INCS = -I /usr/include \
 ALL_INCS = $(SYS_INCS) \
 		-I src
 
-LIB = -lsqlite3 -lpthread -lbrpc -lssl -lcrypto -ldl -lz -lrt -lgflags -lprotobuf -lleveldb
+LIB = -lsqlite3 -lpthread -lssl -lcrypto -ldl -lz -lrt
 
 OBJS_PATH = objs
 PROTOS = $(wildcard $(OBJS_PATH)/*.proto)

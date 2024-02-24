@@ -81,7 +81,7 @@ func init() {
 	gin.SetMode(gin.ReleaseMode)
 	gin.DisableConsoleColor()
 
-	logPath := path.Join(common.Config.Base.LogPath, "exodia.log")
+	logPath := path.Join(common.Config.Base.LogPath, "access.log")
 	logFile, err := os.OpenFile(logPath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0766)
 	if err != nil {
 		log.Panic(err)

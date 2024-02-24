@@ -27,7 +27,12 @@ objs/*
 *.exe
 *.out
 *.app
+*.pcap
 output/*
-conf/*
 deploy/*
 .vscode/settings.json
+
+# Project
+log/*
+conf/*
+exodia

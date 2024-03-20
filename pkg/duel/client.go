@@ -25,7 +25,7 @@ type MatchClient struct {
 func NewMatchClient(token string) *MatchClient {
 	client := &MatchClient{
 		client: &http.Client{
-			Timeout: 1 * time.Second,
+			Timeout: 3 * time.Second,
 		},
 		host:  common.Config.Match.Host,
 		token: token,
@@ -115,11 +115,13 @@ func (c *MatchClient) doGet(url string, sig bool) (json.RawMessage, error) {
 
 	defer resp.Body.Close()
 
+	log.Printf("path: %s, response: %v", r.URL.Path, resp.StatusCode)
+
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
 	}
-	log.Printf("%s latency: %v", url, time.Since(start))
+	log.Printf("path: %s, latency: %v", r.URL.Path, time.Since(start))
 
 	if err := json.Unmarshal(data, &result); err != nil {
 		return nil, err
@@ -168,11 +170,11 @@ func (c *MatchClient) ListMatches(p *ListParams) (*ListResponse, error) {
 	params.Add("status", "2")
 	params.Add("page", "1")
 	params.Add("limit", "32")
-	if p.AreaId != "" {
-		params.Add("area_code", p.AreaId)
+	if p.AreaId > 0 {
+		params.Add("area_code", fmt.Sprint(p.AreaId))
 	}
-	if p.CityId != "" {
-		params.Add("city_id", p.CityId)
+	if p.CityId > 0 {
+		params.Add("city_id", fmt.Sprint(p.CityId))
 	}
 	if p.IsOcg {
 		params.Add("condition", "[\"2\"]")
@@ -215,6 +217,23 @@ func (c *MatchClient) ShowMatchDetail(matchId string) (*InfoResponse, error) {
 		return nil, err
 	}
 	return resp, err
+}
+
+func (c *MatchClient) SendIdentityCard(matchId string, name string, cardId string) error {
+	params := url.Values{}
+	params.Add("match_id", matchId)
+	params.Add("name", name)
+	params.Add("card", cardId)
+	body := params.Encode()
+
+	url := c.host + "/v1/match/card/info"
+
+	_, err := c.doPost(url, body, true)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (c *MatchClient) GetCaptcha() (string, error) {

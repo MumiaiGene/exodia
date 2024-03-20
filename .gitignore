@@ -35,4 +35,5 @@ deploy/*
 # Project
 log/*
 conf/*
+test*
 exodia

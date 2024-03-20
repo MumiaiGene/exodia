@@ -12,38 +12,38 @@ import (
 	"time"
 
 	"exodia.cn/pkg/common"
-	"exodia.cn/pkg/handler"
+	"exodia.cn/pkg/router"
 	"exodia.cn/pkg/task"
 	"github.com/gin-gonic/gin"
 )
 
 func main() {
-	router := gin.New()
-	router.Use(gin.Logger(), gin.Recovery())
+	g := gin.New()
+	g.Use(gin.Logger(), gin.Recovery())
 
 	// Bot Router
-	router.POST("/event", handler.EventRouteHandler)
-	router.POST("/message", handler.MessageRouteHandler)
-	router.POST("/challenge", handler.ChallengeHandler)
+	g.POST("/event", router.EventRouteHandler)
+	g.POST("/message", router.MessageRouteHandler)
+	g.POST("/challenge", router.ChallengeHandler)
 
 	// API Router
-	userRouter := router.Group("/user")
+	userRouter := g.Group("/user")
 	{
-		userRouter.POST("/add", handler.AddUserRouter)
-		userRouter.GET("/list", handler.ListUserRouter)
+		userRouter.POST("/add", router.AddUserRouter)
+		userRouter.GET("/list", router.ListUserRouter)
 	}
-	matchRouter := router.Group("/match")
+	matchRouter := g.Group("/match")
 	{
-		matchRouter.POST("/signup", handler.SignUpMatchRouter)
-		matchRouter.POST("/list", handler.ListMatchRouter)
-		matchRouter.POST("/schedule", handler.ScheduleMatchRouter)
+		matchRouter.POST("/signup", router.SignUpMatchRouter)
+		matchRouter.POST("/list", router.ListMatchRouter)
+		matchRouter.POST("/schedule", router.ScheduleMatchRouter)
 	}
 
 	task.GlobalManager.StartConsume()
 
 	srv := http.Server{
 		Addr:    fmt.Sprintf(":%d", common.Config.Base.Port),
-		Handler: router,
+		Handler: g,
 	}
 
 	log.Println("Server starting")
@@ -81,13 +81,18 @@ func init() {
 	gin.SetMode(gin.ReleaseMode)
 	gin.DisableConsoleColor()
 
-	logPath := path.Join(common.Config.Base.LogPath, "access.log")
-	logFile, err := os.OpenFile(logPath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0766)
+	logPath := path.Join(common.Config.Base.LogPath)
+	logFile, err := os.OpenFile(path.Join(logPath, "exodia.log"), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0644)
 	if err != nil {
 		log.Panic(err)
 	}
 	log.SetOutput(logFile)
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 
-	gin.DefaultWriter = logFile
+	ginLogFile, err := os.OpenFile(path.Join(logPath, "access.log"), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0644)
+	if err != nil {
+		log.Panic(err)
+	}
+
+	gin.DefaultWriter = ginLogFile
 }

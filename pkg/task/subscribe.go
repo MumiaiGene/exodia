@@ -7,8 +7,8 @@ import (
 	"log"
 	"time"
 
+	"exodia.cn/pkg/bot"
 	"exodia.cn/pkg/duel"
-	"exodia.cn/pkg/message"
 )
 
 type SubscribeResult struct {
@@ -22,8 +22,8 @@ type SubscribeResult struct {
 }
 
 type SubscribeParam struct {
-	AreaId     string           `json:"area_id"`
-	ZoneId     string           `json:"zone_id"`
+	AreaId     uint32           `json:"area_id"`
+	ZoneId     uint32           `json:"zone_id"`
 	IsOcg      bool             `json:"is_ocg"`
 	AutoSignUp bool             `json:"auto_signup"`
 	Type       []duel.MatchType `json:"types"`
@@ -60,7 +60,7 @@ func (s *Subscribe) Start() {
 	for range s.timer.C {
 		result, err := s.searchTask()
 		if err != nil {
-			message.SendTextMessage(err.Error(), s.UserId)
+			bot.SendTextMessage(err.Error(), s.UserId)
 			continue
 		}
 		log.Printf("Find %d match in this round", len(result))
@@ -78,7 +78,7 @@ func (s *Subscribe) Start() {
 				continue
 			}
 
-			message.SendTextMessage(text, s.UserId)
+			bot.SendTextMessage(text, s.UserId)
 
 			task := &Task{
 				Id:         match.Id,

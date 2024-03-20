@@ -25,7 +25,7 @@ type UserMataData struct {
 	State    UserState `json:"state"`
 	Phone    string    `json:"phone"`
 	Token    string    `json:"token"`
-	CityCode uint32    `json:"city"`
+	AreaCode uint32    `json:"area"`
 }
 
 func Login(openId string, code string) error {
@@ -106,7 +106,7 @@ func UpdateUser(openId string, new *UserMataData) error {
 
 	user.Phone = new.Phone
 	user.Token = new.Token
-	user.CityCode = new.CityCode
+	user.AreaCode = new.AreaCode
 
 	if user.Phone == "" {
 		user.State = StateWaitPhone
@@ -119,14 +119,24 @@ func UpdateUser(openId string, new *UserMataData) error {
 	return nil
 }
 
-func SetCityCode(openId string, city uint32) {
+func SetAreaCode(openId string, city uint32) {
 	model, _ := userMetaCache.LoadEntry(openId)
 	if model == nil {
 		return
 	}
 
 	user := model.(*UserMataData)
-	user.CityCode = city
+	user.AreaCode = city
+}
+
+func GetAreaCode(openId string) uint32 {
+	model, _ := userMetaCache.LoadEntry(openId)
+	if model == nil {
+		return 0
+	}
+
+	user := model.(*UserMataData)
+	return user.AreaCode
 }
 
 func GetUserState(openId string) UserState {

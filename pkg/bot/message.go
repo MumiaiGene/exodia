@@ -1,7 +1,8 @@
-package message
+package bot
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log"
 	"strings"
@@ -13,11 +14,43 @@ import (
 	larkim "github.com/larksuite/oapi-sdk-go/v3/service/im/v1"
 )
 
-const (
-	LoginSuccess = "ctp_AAgl7ar1SWwK"
-)
-
 var client *MessageClient
+
+type TemplateVariable interface{}
+
+type MatchObject struct {
+	Id       string `json:"match_id"`
+	MarkDown string `json:"match_markdown"`
+	Action   string `json:"button_action"`
+}
+
+type ListMatchVariable struct {
+	MatchSet []MatchObject `json:"match_set"`
+	Title    string        `json:"card_title"`
+}
+
+type SelectRegionVariable struct {
+	OpenId     string         `json:"open_id"`
+	UserId     string         `json:"user_id"`
+	RegionText string         `json:"region_text"`
+	CityText   string         `json:"city_text"`
+	RegionList []SelectOption `json:"region_list"`
+	CityList   []SelectOption `json:"city_list"`
+}
+
+type TemplateData struct {
+	Id       string           `json:"template_id"`
+	Variable TemplateVariable `json:"template_variable"`
+}
+
+type InteractiveContent struct {
+	Type string       `json:"type"`
+	Data TemplateData `json:"data"`
+}
+
+type TextContent struct {
+	Text string `json:"text"`
+}
 
 type Message struct {
 	Type    string `json:"msg_type"`
@@ -26,6 +59,42 @@ type Message struct {
 
 type MessageClient struct {
 	client *lark.Client
+}
+
+func newTextMessage(text string) *Message {
+	content := TextContent{
+		Text: text,
+	}
+	res, err := json.Marshal(content)
+	if err != nil {
+		return nil
+	}
+	msg := &Message{
+		Type:    "text",
+		Content: string(res),
+	}
+
+	return msg
+}
+
+func newTemplateInteractive(templateId string, v TemplateVariable) *Message {
+	content := InteractiveContent{
+		Type: "template",
+		Data: TemplateData{
+			Id:       templateId,
+			Variable: v,
+		},
+	}
+	res, err := json.Marshal(content)
+	if err != nil {
+		return nil
+	}
+	msg := &Message{
+		Type:    "interactive",
+		Content: string(res),
+	}
+
+	return msg
 }
 
 func NewMessageClient() *MessageClient {

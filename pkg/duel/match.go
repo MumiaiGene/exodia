@@ -1,6 +1,8 @@
 package duel
 
-import "encoding/json"
+import (
+	"encoding/json"
+)
 
 // TODO: replace with protobuf
 
@@ -10,6 +12,10 @@ const (
 	Special       MatchType = "3"
 	Tournament    MatchType = "4"
 	YgoDay        MatchType = "11"
+	TournamentSp  MatchType = "19"
+
+	defaultMatchText  = "比赛"
+	defaultMatchColor = "neutral"
 )
 
 type MatchType string
@@ -40,15 +46,22 @@ type MatchPlayer struct {
 	PlayerCount uint32 `json:"player_count"`
 }
 
+type MatchBasicInfo struct {
+	Address string `json:"address_info"`
+}
+
 type MatchInfo struct {
-	Condition     uint32      `json:"Condition"`
-	SignUpStartAt string      `json:"SignUpStartAt"`
-	StartAt       string      `json:"StartAt"`
-	Player        MatchPlayer `json:"player"`
+	Name             string         `json:"Name"`
+	Type             uint32         `json:"Type"`
+	Condition        uint32         `json:"Condition"`
+	SignUpStartAt    string         `json:"SignUpStartAt"`
+	StartAt          string         `json:"StartAt"`
+	Basic            MatchBasicInfo `json:"basic_info"`
+	Player           MatchPlayer    `json:"player"`
+	NeedIdentityCard bool           `json:"is_card"`
 }
 
 type InfoResponse struct {
-	Name     string      `json:"Name"`
 	Info     MatchInfo   `json:"info"`
 	Role     string      `json:"role"`
 	IsSignup bool        `json:"isSignup"`
@@ -60,6 +73,7 @@ type MatchTitle struct {
 	Status          string `json:"text"`
 	SignUpTotal     uint32 `json:"signUpTotal"`
 	AlreadySignedUp uint32 `json:"alreadySignedUp"`
+	CountDown       uint32 `json:"countdown"`
 }
 
 type MatchBottom struct {
@@ -69,8 +83,10 @@ type MatchBottom struct {
 
 type MatchListInfo struct {
 	Name    string      `json:"name"`
+	Address string      `json:"address"`
 	Id      uint32      `json:"id"`
 	Type    uint32      `json:"type"`
+	Rule    uint32      `json:"rule"`
 	StartAt int64       `json:"startAtTimestamp"`
 	Role    string      `json:"role"`
 	Bottom  MatchBottom `json:"bottom"`
@@ -81,8 +97,8 @@ type ListResponse struct {
 }
 
 type ListParams struct {
-	AreaId     string      `json:"area_id"`
-	CityId     string      `json:"city_id"`
+	AreaId     uint32      `json:"area_id"`
+	CityId     uint32      `json:"city_id"`
 	IsOcg      bool        `json:"is_ocg"`
 	Type       []MatchType `json:"types"`
 	NumberType uint32      `json:"player_number_type"`
@@ -90,7 +106,56 @@ type ListParams struct {
 	Keywords   string      `json:"keywords"`
 }
 
+type SignUpParam struct {
+	MatchId     string `json:"match_id"`
+	MatchName   string `json:"match_name"`
+	AutoSignUp  bool   `json:"auto_signup"`
+	NeedCaptcha bool   `json:"need_captcha"`
+}
+
 // CaptchaResponse
 type CaptchaResponse struct {
 	Result string `json:"res"`
+}
+
+var MatchTypeToString = map[MatchType]string{
+	Entertainment: "娱乐赛",
+	Rank:          "积分赛",
+	Special:       "特殊赛",
+	Tournament:    "巡回赛",
+	YgoDay:        "游戏王之日",
+	TournamentSp:  "巡回赛特别场",
+}
+
+var MatchTypeToColor = map[MatchType]string{
+	Entertainment: "green",
+	Rank:          "red",
+	Special:       "yellow",
+	Tournament:    "blue",
+	YgoDay:        "purple",
+	TournamentSp:  "orange",
+}
+
+func GetMatchTypeString(matchType MatchType) string {
+	if _, ok := MatchTypeToString[matchType]; !ok {
+		return defaultMatchText
+	}
+
+	return MatchTypeToString[matchType]
+}
+
+func GetMatchTypeColor(matchType MatchType) string {
+	if _, ok := MatchTypeToColor[matchType]; !ok {
+		return defaultMatchColor
+	}
+
+	return MatchTypeToColor[matchType]
+}
+
+func IsMatchNeedCaptcha(matchType MatchType) bool {
+	if matchType == Tournament || matchType == TournamentSp {
+		return true
+	}
+
+	return false
 }

@@ -118,6 +118,10 @@ func (s *Subscribe) searchTask() ([]*SubscribeResult, error) {
 		CityId: s.Params.ZoneId,
 		IsOcg:  s.Params.IsOcg,
 		Type:   s.Params.Type,
+
+		Status: 2,
+		Page:   1,
+		Limit:  32,
 	}
 
 	resp, err := s.client.ListMatches(req)

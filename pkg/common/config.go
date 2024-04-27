@@ -47,12 +47,22 @@ type CaptchaConfig struct {
 	Iv     string `mapstructure:"iv"`
 }
 
+type UserConfig struct {
+	Id    string `mapstructure:"id"`
+	Name  string `mapstructure:"name"`
+	Card  string `mapstructure:"card"`
+	Phone string `mapstructure:"phone"`
+	Token string `mapstructure:"token"`
+	Area  uint32 `mapstructure:"area"`
+}
+
 type ExodiaConfig struct {
 	Base    BaseConfig    `mapstructure:"base"`
 	Match   MatchConfig   `mapstructure:"match"`
 	Captcha CaptchaConfig `mapstructure:"captcha"`
 	Bot     BotConfig     `mapstructure:"bot"`
 	Wx      WxConfig      `mapstructure:"wx"`
+	Users   []UserConfig  `mapstructure:"user"`
 }
 
 func init() {

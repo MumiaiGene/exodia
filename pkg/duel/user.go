@@ -26,6 +26,8 @@ type UserMataData struct {
 	Phone    string    `json:"phone"`
 	Token    string    `json:"token"`
 	AreaCode uint32    `json:"area"`
+	Name     string
+	Card     string
 }
 
 func Login(openId string, code string) error {
@@ -159,6 +161,26 @@ func GetUserToken(openId string) string {
 	return user.Token
 }
 
+func GetUserName(openId string) string {
+	model, _ := userMetaCache.LoadEntry(openId)
+	if model == nil {
+		return ""
+	}
+
+	user := model.(*UserMataData)
+	return user.Name
+}
+
+func GetUserCardId(openId string) string {
+	model, _ := userMetaCache.LoadEntry(openId)
+	if model == nil {
+		return ""
+	}
+
+	user := model.(*UserMataData)
+	return user.Card
+}
+
 func GetUserId(openId string) string {
 	model, _ := userMetaCache.LoadEntry(openId)
 	if model == nil {
@@ -167,6 +189,23 @@ func GetUserId(openId string) string {
 
 	user := model.(*UserMataData)
 	return user.UserId
+}
+
+func InitUser(users []common.UserConfig) {
+	for _, user := range users {
+		meta := &UserMataData{
+			UserId:   user.Id,
+			Phone:    user.Phone,
+			Token:    user.Token,
+			AreaCode: user.Area,
+			Name:     user.Name,
+			Card:     user.Card,
+			State:    StateLoggedIn,
+		}
+
+		log.Printf("Added User: %s, Token: %s", user.Id, user.Token)
+		userMetaCache.SaveEntry(meta.UserId, meta)
+	}
 }
 
 func init() {

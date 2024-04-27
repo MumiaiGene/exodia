@@ -10,6 +10,8 @@ type ScheduleParam struct {
 	AutoSignUp  bool
 	NeedCaptcha bool
 	Token       string
+	UserName    string
+	UserCard    string
 }
 
 type Schedule struct {
@@ -28,6 +30,7 @@ func CreateSchedule(userId string, params ScheduleParam) *Schedule {
 
 func (s *Schedule) Start() {
 	log.Printf("Start schedule for %s, ", s.Params.MatchName)
+	log.Printf("Identity card: %s %s", s.Params.UserName, s.Params.UserCard)
 
 	task := &Task{
 		Id:          s.Params.MatchId,
@@ -37,6 +40,8 @@ func (s *Schedule) Start() {
 		AutoSignUp:  s.Params.AutoSignUp,
 		NeedCaptcha: s.Params.NeedCaptcha,
 		Token:       s.Params.Token,
+		UserName:    s.Params.UserName,
+		UserCardId:  s.Params.UserCard,
 	}
 	s.task = task
 

@@ -104,6 +104,10 @@ type ListParams struct {
 	NumberType uint32      `json:"player_number_type"`
 	StartType  uint32      `json:"match_start_type"`
 	Keywords   string      `json:"keywords"`
+
+	Status uint32
+	Page   uint32
+	Limit  uint32
 }
 
 type SignUpParam struct {
@@ -116,6 +120,27 @@ type SignUpParam struct {
 // CaptchaResponse
 type CaptchaResponse struct {
 	Result string `json:"res"`
+}
+
+type RankingResult struct {
+	Name   string `json:"nickName"`
+	Rank   uint32 `json:"rank"`
+	Points uint32 `json:"points"`
+}
+
+type RankingResponse struct {
+	Result []RankingResult `json:"res"`
+}
+
+type SwissResult struct {
+	Name  string `json:"nickName"`
+	Rank  uint32 `json:"rank"`
+	Score uint32 `json:"score"`
+}
+
+type SwissRankResponse struct {
+	Result []SwissResult `json:"againstResultSwiss"`
+	Count  uint32        `json:"count"`
 }
 
 var MatchTypeToString = map[MatchType]string{

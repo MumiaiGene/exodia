@@ -41,6 +41,8 @@ type MatchStatus uint32
 type Task struct {
 	Id          string
 	UserId      string
+	UserName    string
+	UserCardId  string
 	Name        string
 	Interval    int
 	SignUpAt    int64 `json:"signup_at"`
@@ -183,6 +185,13 @@ func (task *Task) production() (bool, error) {
 		}
 		if data.Role == "player" {
 			return true, nil
+		}
+
+		if data.Info.NeedIdentityCard {
+			err = client.SendIdentityCard(task.Id, task.UserName, task.UserCardId)
+			if err != nil {
+				log.Printf("Failed to send identity card, err: %v", err)
+			}
 		}
 
 		signup, _ := time.Parse(time.RFC3339, data.Info.SignUpStartAt)

@@ -56,6 +56,8 @@ func signUpMatchHandler(openId string, action bot.MessageAction) (*bot.Interacti
 			AutoSignUp:  true,
 			NeedCaptcha: needCaptcha,
 			Token:       duel.GetUserToken(openId),
+			UserName:    duel.GetUserName(openId),
+			UserCard:    duel.GetUserCardId(openId),
 		}
 		s := task.CreateSchedule(openId, params)
 		s.Start()
@@ -72,6 +74,8 @@ func signUpMatchHandler(openId string, action bot.MessageAction) (*bot.Interacti
 				AutoSignUp:  true,
 				NeedCaptcha: needCaptcha,
 				Token:       duel.GetUserToken(openId),
+				UserName:    duel.GetUserName(openId),
+				UserCard:    duel.GetUserCardId(openId),
 			}
 			s := task.CreateSchedule(openId, params)
 			s.Start()

@@ -82,7 +82,6 @@ func (c *MatchClient) doPost(url string, body string, sig bool) (json.RawMessage
 	}
 
 	if result.Code != 200 {
-		c.token = ""
 		return nil, errors.New(result.Msg)
 	}
 
@@ -128,7 +127,6 @@ func (c *MatchClient) doGet(url string, sig bool) (json.RawMessage, error) {
 	}
 
 	if result.Code != 200 {
-		c.token = ""
 		return nil, errors.New(result.Msg)
 	}
 
@@ -167,14 +165,17 @@ func findTrueCode(text string) (string, error) {
 
 func (c *MatchClient) ListMatches(p *ListParams) (*ListResponse, error) {
 	params := url.Values{}
-	params.Add("status", "2")
-	params.Add("page", "1")
-	params.Add("limit", "32")
+	params.Add("status", fmt.Sprint(p.Status))
+	params.Add("page", fmt.Sprint(p.Page))
+	params.Add("limit", fmt.Sprint(p.Limit))
 	if p.AreaId > 0 {
 		params.Add("area_code", fmt.Sprint(p.AreaId))
 	}
 	if p.CityId > 0 {
 		params.Add("city_id", fmt.Sprint(p.CityId))
+	}
+	if p.StartType > 0 {
+		params.Add("match_start_type", fmt.Sprint(p.StartType))
 	}
 	if p.IsOcg {
 		params.Add("condition", "[\"2\"]")
@@ -318,6 +319,50 @@ func (c *MatchClient) ListAddress() (*ListAddressResponse, error) {
 	}
 
 	resp := &ListAddressResponse{}
+
+	if err = json.Unmarshal(data, &resp); err != nil {
+		return nil, err
+	}
+
+	return resp, nil
+}
+
+func (c *MatchClient) ListRanking() (*RankingResponse, error) {
+	params := url.Values{}
+	params.Add("type", "2")
+	params.Add("page", "1")
+	params.Add("limit", "40")
+	body := params.Encode()
+
+	url := c.host + "/v1/points/ranking"
+
+	data, err := c.doPost(url, body, true)
+	if err != nil {
+		return nil, err
+	}
+
+	resp := &RankingResponse{}
+
+	if err = json.Unmarshal(data, &resp); err != nil {
+		return nil, err
+	}
+
+	return resp, nil
+}
+
+func (c *MatchClient) ShowSwissInfo(matchId string, limit uint32) (*SwissRankResponse, error) {
+	baseUrl, _ := url.Parse(c.host + "/v1/match/against/resultswiss/" + matchId)
+	params := url.Values{}
+	params.Add("page", "1")
+	params.Add("limit", fmt.Sprint(limit))
+	baseUrl.RawQuery = params.Encode()
+
+	data, err := c.doGet(baseUrl.String(), true)
+	if err != nil {
+		return nil, err
+	}
+
+	resp := &SwissRankResponse{}
 
 	if err = json.Unmarshal(data, &resp); err != nil {
 		return nil, err

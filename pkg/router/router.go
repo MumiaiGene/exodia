@@ -158,12 +158,17 @@ func ScheduleMatchRouter(ctx *gin.Context) {
 		return
 	}
 
+	userName := duel.GetUserName(req.UserId)
+	userCardId := duel.GetUserCardId(req.UserId)
+
 	params := task.ScheduleParam{
 		MatchId:     req.Param.MatchId,
 		MatchName:   req.Param.MatchName,
 		AutoSignUp:  req.Param.AutoSignUp,
 		NeedCaptcha: req.Param.NeedCaptcha,
 		Token:       token,
+		UserName:    userName,
+		UserCard:    userCardId,
 	}
 	s := task.CreateSchedule(req.UserId, params)
 	s.Start()

@@ -38,6 +38,9 @@ var menuHandlerMap = map[string]ClickMenuFunc{
 func listMatchHandler(openId string, recvId string) {
 	params := &duel.ListParams{
 		AreaId: duel.GetAreaCode(openId),
+		Status: 2,
+		Page:   1,
+		Limit:  32,
 	}
 	token := duel.GetUserToken(openId)
 	client := duel.NewMatchClient(token)

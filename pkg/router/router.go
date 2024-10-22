@@ -118,6 +118,15 @@ func SignUpMatchRouter(ctx *gin.Context) {
 	}
 
 	client := duel.NewMatchClient(token)
+	if err = client.CheckPlayer(req.Param.MatchId); err != nil {
+		ctx.JSON(
+			http.StatusBadRequest,
+			gin.H{
+				"msg": err.Error(),
+			},
+		)
+		return
+	}
 	if err = client.SignUpMatch(req.Param.MatchId, req.Param.NeedCaptcha); err != nil {
 		ctx.JSON(
 			http.StatusBadRequest,

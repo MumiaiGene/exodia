@@ -252,6 +252,12 @@ func (c *MatchClient) GetCaptcha() (string, error) {
 	return resp.Result, err
 }
 
+func (c *MatchClient) CheckPlayer(matchId string) error {
+	url := c.host + "/v1/match/player/check/" + matchId
+	_, err := c.doGet(url, true)
+	return err
+}
+
 func (c *MatchClient) SignUpMatch(matchId string, needCaptcha bool) error {
 	baseUrl, _ := url.Parse(c.host + "/v1/match/signup/" + matchId)
 	if needCaptcha {

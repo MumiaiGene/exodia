@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"exodia.cn/pkg/common"
+	"exodia.cn/pkg/duel"
 	"exodia.cn/pkg/router"
 	"exodia.cn/pkg/task"
 	"github.com/gin-gonic/gin"
@@ -38,6 +39,8 @@ func main() {
 		matchRouter.POST("/list", router.ListMatchRouter)
 		matchRouter.POST("/schedule", router.ScheduleMatchRouter)
 	}
+
+	duel.InitUser(common.Config.Users)
 
 	task.GlobalManager.StartConsume()
 

@@ -44,6 +44,14 @@ func signUpMatchHandler(openId string, action bot.MessageAction) (*bot.Interacti
 	buttonAction := showMatchText
 
 	if info.Role == "player" {
+		bot.SendTextMessage(fmt.Sprintf("[%s]已经报名", info.Info.Name), openId)
+		return &bot.InteractiveContent{}, nil
+	}
+
+	err = client.CheckPlayer(value.MatchId)
+	if err != nil {
+		log.Printf("Failed to check player, err: %v", err)
+		bot.SendTextMessage(fmt.Sprintf("[%s]报名失败: %v", info.Info.Name, err), openId)
 		return &bot.InteractiveContent{}, nil
 	}
 
@@ -67,20 +75,8 @@ func signUpMatchHandler(openId string, action bot.MessageAction) (*bot.Interacti
 		err = client.SignUpMatch(value.MatchId, needCaptcha)
 		if err != nil {
 			log.Printf("Failed to signup match, err: %v", err)
-
-			params := task.ScheduleParam{
-				MatchId:     value.MatchId,
-				MatchName:   info.Info.Name,
-				AutoSignUp:  true,
-				NeedCaptcha: needCaptcha,
-				Token:       duel.GetUserToken(openId),
-				UserName:    duel.GetUserName(openId),
-				UserCard:    duel.GetUserCardId(openId),
-			}
-			s := task.CreateSchedule(openId, params)
-			s.Start()
-
-			title = info.Info.Name + "[已订阅]"
+			bot.SendTextMessage(fmt.Sprintf("[%s]报名失败: %v", info.Info.Name, err), openId)
+			return &bot.InteractiveContent{}, nil
 		} else {
 			title = info.Info.Name + "[报名成功]"
 			buttonAction = playerText

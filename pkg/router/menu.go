@@ -40,7 +40,7 @@ func listMatchHandler(openId string, recvId string) {
 		AreaId: duel.GetAreaCode(openId),
 		Status: 2,
 		Page:   1,
-		Limit:  32,
+		Limit:  64,
 	}
 	token := duel.GetUserToken(openId)
 	client := duel.NewMatchClient(token)
@@ -67,7 +67,9 @@ func listMatchHandler(openId string, recvId string) {
 			action = playerText
 		}
 
-		if mType == duel.Entertainment && !strings.Contains(name, "特别大会") {
+		if mType == duel.Entertainment &&
+			!strings.Contains(name, "特别大会") &&
+			!strings.Contains(name, "四季大会") {
 			continue
 		}
 
@@ -81,7 +83,7 @@ func listMatchHandler(openId string, recvId string) {
 			Action:   action,
 		})
 
-		if len(matchSet) == 10 {
+		if len(matchSet) == 20 {
 			break
 		}
 	}

@@ -11,6 +11,8 @@ const (
 	Rank          MatchType = "2"
 	Special       MatchType = "3"
 	Tournament    MatchType = "4"
+	Invitation    MatchType = "5"
+	Qualifying    MatchType = "6"
 	YgoDay        MatchType = "11"
 	TournamentSp  MatchType = "19"
 
@@ -148,6 +150,8 @@ var MatchTypeToString = map[MatchType]string{
 	Rank:          "积分赛",
 	Special:       "特殊赛",
 	Tournament:    "巡回赛",
+	Invitation:    "邀请赛",
+	Qualifying:    "预选赛",
 	YgoDay:        "游戏王之日",
 	TournamentSp:  "巡回赛特别场",
 }
@@ -157,6 +161,8 @@ var MatchTypeToColor = map[MatchType]string{
 	Rank:          "red",
 	Special:       "yellow",
 	Tournament:    "blue",
+	Qualifying:    "violet",
+	Invitation:    "carmine",
 	YgoDay:        "purple",
 	TournamentSp:  "orange",
 }
@@ -178,7 +184,8 @@ func GetMatchTypeColor(matchType MatchType) string {
 }
 
 func IsMatchNeedCaptcha(matchType MatchType) bool {
-	if matchType == Tournament || matchType == TournamentSp {
+	if matchType == Tournament || matchType == TournamentSp ||
+		matchType == Qualifying {
 		return true
 	}
 

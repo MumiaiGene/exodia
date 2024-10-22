@@ -24,7 +24,7 @@ const (
 )
 
 const (
-	MAX_RETRY          = 120
+	MAX_RETRY          = 20
 	SIGNUP_TIME_FORMAT = "2006-12-12T16:00:00+08:00"
 	START_TEXT_FORMAT  = "比赛【%s】已经开始, 任务结束"
 )
@@ -122,6 +122,7 @@ func (task *Task) DoTask() {
 
 			retry--
 			if retry == 0 {
+				task.SignUpAt = 0
 				bot.SendTextMessage(RetryErrorText, task.UserId)
 				time.Sleep(1 * time.Hour)
 				continue
@@ -188,6 +189,7 @@ func (task *Task) production() (bool, error) {
 		}
 
 		if data.Info.NeedIdentityCard {
+			log.Printf("Identity card: %s %s", task.UserName, task.UserCardId)
 			err = client.SendIdentityCard(task.Id, task.UserName, task.UserCardId)
 			if err != nil {
 				log.Printf("Failed to send identity card, err: %v", err)
@@ -212,14 +214,20 @@ func (task *Task) production() (bool, error) {
 				if ts.Hour() > 13 {
 					ts = ts.Add(24 * time.Hour)
 				}
-				task.SignUpAt = time.Date(ts.Year(), ts.Month(), ts.Day(), 13, 00, 0, 0, ts.Location()).Unix()
+				task.SignUpAt = time.Date(ts.Year(), ts.Month(), ts.Day(), 12, 59, 55, 0, ts.Location()).Unix()
 			}
 		}
 
 	}
 
 	if time.Now().Unix() >= task.SignUpAt {
+		err := client.CheckPlayer(task.Id)
+		if err != nil {
+			log.Printf("Failed to check player, err: %v", err)
+			return false, err
+		}
 		if task.AutoSignUp {
+			time.Sleep(1 * time.Second)
 			err := client.SignUpMatch(task.Id, task.NeedCaptcha)
 			if err != nil {
 				log.Printf("Failed to signup match, err: %v", err)

@@ -1,0 +1,49 @@
+# Machine-specific configuration and credentials
+/.private/
+/config/signing.xcconfig
+.env
+.env.*
+!.env.example
+*.p12
+*.pfx
+*.mobileprovision
+*.provisionprofile
+*.key
+
+# Configuration copied into App bundles
+PrivateConfiguration.json
+JHSProtocolProfile.json
+
+# Local resource archives and full artwork download cache
+/.local-resources/
+vrains-resources*.zip
+
+# Current repository scope: native iOS; Unity work stays local
+/game-client/
+/unity-dev/
+/resource-dev/
+
+# macOS and personal editor state
+.DS_Store
+._*
+.vscode/settings.json
+
+# Shared build output and Xcode user state
+.build/
+DerivedData/
+xcuserdata/
+*.xcuserstate
+*.app/
+*.ipa
+*.dSYM/
+*.xcarchive/
+*.xcresult/
+
+# Python caches and local environments
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/

@@ -1,0 +1,479 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+        FB1200000000000000000001 /* CardImageExport.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB1200000000000000000002; };
+FA9100000000000000000001 = {isa = PBXBuildFile; fileRef = FA9100000000000000000002; };
+FA9000000000000000000001 = {isa = PBXBuildFile; fileRef = FA9000000000000000000002; };
+FA9000000000000000000003 = {isa = PBXBuildFile; fileRef = FA9000000000000000000004; };
+AD1000000000000000000004 = {isa = PBXBuildFile; fileRef = AD2000000000000000000004; };
+AD1000000000000000000003 = {isa = PBXBuildFile; fileRef = AD2000000000000000000003; };
+AD1000000000000000000002 = {isa = PBXBuildFile; fileRef = AD2000000000000000000002; };
+AD1000000000000000000001 = {isa = PBXBuildFile; fileRef = AD2000000000000000000001; };
+FD0000000000000000000002 = {isa = PBXBuildFile; fileRef = FE0000000000000000000002; };
+FD0000000000000000000001 = {isa = PBXBuildFile; fileRef = FE0000000000000000000001; };
+        FC0000000000000000000001 /* DeckImageExport.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC0000000000000000000002 /* DeckImageExport.swift */; };
+        FB0000000000000000000001 /* DeckDragging.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB0000000000000000000002 /* DeckDragging.swift */; };
+        FA0000000000000000000004 /* DeckScreens.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA0000000000000000000005 /* DeckScreens.swift */; };
+        FA0000000000000000000002 /* DeckEditing.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA0000000000000000000003 /* DeckEditing.swift */; };
+		F90000000000000000000001 /* NeuronArtwork.swift in Sources */ = {isa = PBXBuildFile; fileRef = F90000000000000000000002 /* NeuronArtwork.swift */; };
+		A00000000000000000000001 /* VrainsApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000003 /* VrainsApp.swift */; };
+		A00000000000000000000002 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000004 /* ContentView.swift */; };
+		C00000000000000000000001 /* AppStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000001 /* AppStore.swift */; };
+		C00000000000000000000002 /* DesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000002 /* DesignSystem.swift */; };
+		C00000000000000000000003 /* ExploreScreens.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000003 /* ExploreScreens.swift */; };
+		C00000000000000000000004 /* DetailSheets.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000004 /* DetailSheets.swift */; };
+		C00000000000000000000005 /* ProfileScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000005 /* ProfileScreen.swift */; };
+		C00000000000000000000006 /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000006 /* APIClient.swift */; };
+		C00000000000000000000007 /* AccountModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000007 /* AccountModels.swift */; };
+		C00000000000000000000008 /* SessionStorage.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000008 /* SessionStorage.swift */; };
+		C00000000000000000000009 /* AccountStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000009 /* AccountStore.swift */; };
+		C0000000000000000000000A /* TestAPITransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0000000000000000000000A /* TestAPITransport.swift */; };
+		C0000000000000000000000B /* PersonalDataViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0000000000000000000000B /* PersonalDataViews.swift */; };
+		C0000000000000000000000C /* NewsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0000000000000000000000C /* NewsStore.swift */; };
+		C0000000000000000000000D /* HomeScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0000000000000000000000D /* HomeScreen.swift */; };
+		C0000000000000000000000E /* NewsDetailScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0000000000000000000000E /* NewsDetailScreen.swift */; };
+		C0000000000000000000000F /* MatchStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0000000000000000000000F /* MatchStore.swift */; };
+		C00000000000000000000010 /* MatchesScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000010 /* MatchesScreen.swift */; };
+		C00000000000000000000011 /* CardModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000011 /* CardModels.swift */; };
+		C00000000000000000000012 /* CardDatabase.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000012 /* CardDatabase.swift */; };
+		C00000000000000000000013 /* CardUpdates.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000013 /* CardUpdates.swift */; };
+		C00000000000000000000014 /* CardBrowserScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000014 /* CardBrowserScreen.swift */; };
+		C00000000000000000000015 /* CardDetailScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000015 /* CardDetailScreen.swift */; };
+		C00000000000000000000016 /* CardData in Resources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000016 /* CardData */; };
+		C00000000000000000000017 /* CardPrintings.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000017 /* CardPrintings.swift */; };
+		C00000000000000000000018 /* CardPrintingsScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000018 /* CardPrintingsScreen.swift */; };
+		C00000000000000000000019 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000019 /* Assets.xcassets */; };
+		F10000000000000000000001 /* DuelLobbyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000002 /* DuelLobbyStore.swift */; };
+		F10000000000000000000003 /* DuelLobbyScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000004 /* DuelLobbyScreen.swift */; };
+		F20000000000000000000001 /* DataStormLaunchScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = F20000000000000000000002 /* DataStormLaunchScreen.swift */; };
+		F20000000000000000000003 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = F20000000000000000000004 /* LaunchScreen.storyboard */; };
+		CA0000000000000000000001 /* BanlistScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA0000000000000000000001; };
+		CA0000000000000000000002 = {isa = PBXBuildFile; fileRef = BA0000000000000000000002; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+        AF2300000000000000000001 = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = ../config/signing.xcconfig; sourceTree = SOURCE_ROOT; };
+        FB1200000000000000000002 /* CardImageExport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CardImageExport.swift; sourceTree = "<group>"; };
+FA9100000000000000000002 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JHSMatchingBackground.swift; sourceTree = "<group>"; };
+FA9000000000000000000002 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JHSMatching.swift; sourceTree = "<group>"; };
+FA9000000000000000000004 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JHSMatchingScreens.swift; sourceTree = "<group>"; };
+AD2000000000000000000004 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MatchDetails.swift; sourceTree = "<group>"; };
+AD2000000000000000000003 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoresScreen.swift; sourceTree = "<group>"; };
+AD2000000000000000000002 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MatchCatalog.swift; sourceTree = "<group>"; };
+AD2000000000000000000001 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CityLocation.swift; sourceTree = "<group>"; };
+FE0000000000000000000002 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationPermissionView.swift; sourceTree = "<group>"; };
+FE0000000000000000000001 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RankingScreen.swift; sourceTree = "<group>"; };
+        FC0000000000000000000002 /* DeckImageExport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckImageExport.swift; sourceTree = "<group>"; };
+        FB0000000000000000000002 /* DeckDragging.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckDragging.swift; sourceTree = "<group>"; };
+        FA0000000000000000000005 /* DeckScreens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckScreens.swift; sourceTree = "<group>"; };
+        FA0000000000000000000003 /* DeckEditing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckEditing.swift; sourceTree = "<group>"; };
+		F90000000000000000000002 /* NeuronArtwork.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NeuronArtwork.swift; sourceTree = "<group>"; };
+		A00000000000000000000003 /* VrainsApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VrainsApp.swift; sourceTree = "<group>"; };
+		A00000000000000000000004 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		A00000000000000000000005 /* Vrains.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Vrains.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		B00000000000000000000001 /* AppStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStore.swift; sourceTree = "<group>"; };
+		B00000000000000000000002 /* DesignSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesignSystem.swift; sourceTree = "<group>"; };
+		B00000000000000000000003 /* ExploreScreens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExploreScreens.swift; sourceTree = "<group>"; };
+		B00000000000000000000004 /* DetailSheets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DetailSheets.swift; sourceTree = "<group>"; };
+		B00000000000000000000005 /* ProfileScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileScreen.swift; sourceTree = "<group>"; };
+		B00000000000000000000006 /* APIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClient.swift; sourceTree = "<group>"; };
+		B00000000000000000000007 /* AccountModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountModels.swift; sourceTree = "<group>"; };
+		B00000000000000000000008 /* SessionStorage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionStorage.swift; sourceTree = "<group>"; };
+		B00000000000000000000009 /* AccountStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountStore.swift; sourceTree = "<group>"; };
+		B0000000000000000000000A /* TestAPITransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestAPITransport.swift; sourceTree = "<group>"; };
+		B0000000000000000000000B /* PersonalDataViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonalDataViews.swift; sourceTree = "<group>"; };
+		B0000000000000000000000C /* NewsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewsStore.swift; sourceTree = "<group>"; };
+		B0000000000000000000000D /* HomeScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeScreen.swift; sourceTree = "<group>"; };
+		B0000000000000000000000E /* NewsDetailScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewsDetailScreen.swift; sourceTree = "<group>"; };
+		B0000000000000000000000F /* MatchStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MatchStore.swift; sourceTree = "<group>"; };
+		B00000000000000000000010 /* MatchesScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MatchesScreen.swift; sourceTree = "<group>"; };
+		B00000000000000000000011 /* CardModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CardModels.swift; sourceTree = "<group>"; };
+		B00000000000000000000012 /* CardDatabase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CardDatabase.swift; sourceTree = "<group>"; };
+		B00000000000000000000013 /* CardUpdates.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CardUpdates.swift; sourceTree = "<group>"; };
+		B00000000000000000000014 /* CardBrowserScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CardBrowserScreen.swift; sourceTree = "<group>"; };
+		B00000000000000000000015 /* CardDetailScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CardDetailScreen.swift; sourceTree = "<group>"; };
+		B00000000000000000000016 /* CardData */ = {isa = PBXFileReference; lastKnownFileType = folder; path = CardData; sourceTree = "<group>"; };
+		B00000000000000000000017 /* CardPrintings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CardPrintings.swift; sourceTree = "<group>"; };
+		B00000000000000000000018 /* CardPrintingsScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CardPrintingsScreen.swift; sourceTree = "<group>"; };
+		B00000000000000000000019 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		F10000000000000000000002 /* DuelLobbyStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DuelLobbyStore.swift; sourceTree = "<group>"; };
+		F10000000000000000000004 /* DuelLobbyScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DuelLobbyScreen.swift; sourceTree = "<group>"; };
+		F20000000000000000000002 /* DataStormLaunchScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataStormLaunchScreen.swift; sourceTree = "<group>"; };
+		F20000000000000000000004 /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
+		BA0000000000000000000001 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BanlistScreen.swift; sourceTree = "<group>"; };
+		BA0000000000000000000002 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PackCollection.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		A0000000000000000000000A /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		A00000000000000000000006 = {
+			isa = PBXGroup;
+			children = (
+				A00000000000000000000007 /* Vrains */,
+				A00000000000000000000008 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		A00000000000000000000007 /* Vrains */ = {
+			isa = PBXGroup;
+			children = (
+				FE0000000000000000000001,
+FE0000000000000000000002,
+AD2000000000000000000001,
+AD2000000000000000000002,
+AD2000000000000000000003,
+AD2000000000000000000004,
+A00000000000000000000003 /* VrainsApp.swift */,
+				A00000000000000000000004 /* ContentView.swift */,
+				F20000000000000000000002 /* DataStormLaunchScreen.swift */,
+				F20000000000000000000004 /* LaunchScreen.storyboard */,
+				F10000000000000000000004 /* DuelLobbyScreen.swift */,
+				F10000000000000000000002 /* DuelLobbyStore.swift */,
+				B00000000000000000000019 /* Assets.xcassets */,
+				B00000000000000000000001 /* AppStore.swift */,
+				B00000000000000000000002 /* DesignSystem.swift */,
+				B00000000000000000000003 /* ExploreScreens.swift */,
+				BA0000000000000000000001 /* BanlistScreen.swift */,
+				BA0000000000000000000002,
+                FC0000000000000000000002 /* DeckImageExport.swift */,
+                FB1200000000000000000002 /* CardImageExport.swift */,
+                FB0000000000000000000002 /* DeckDragging.swift */,
+                FA0000000000000000000005 /* DeckScreens.swift */,
+                FA0000000000000000000003 /* DeckEditing.swift */,
+				B00000000000000000000004 /* DetailSheets.swift */,
+				B00000000000000000000005 /* ProfileScreen.swift */,
+				B00000000000000000000006 /* APIClient.swift */,
+				B00000000000000000000007 /* AccountModels.swift */,
+				B00000000000000000000008 /* SessionStorage.swift */,
+				B00000000000000000000009 /* AccountStore.swift */,
+				B0000000000000000000000A /* TestAPITransport.swift */,
+				B0000000000000000000000B /* PersonalDataViews.swift */,
+				B0000000000000000000000C /* NewsStore.swift */,
+				B0000000000000000000000D /* HomeScreen.swift */,
+				B0000000000000000000000E /* NewsDetailScreen.swift */,
+				B0000000000000000000000F /* MatchStore.swift */,
+				B00000000000000000000010 /* MatchesScreen.swift */,
+				B00000000000000000000011 /* CardModels.swift */,
+				B00000000000000000000012 /* CardDatabase.swift */,
+				B00000000000000000000013 /* CardUpdates.swift */,
+                F90000000000000000000002 /* NeuronArtwork.swift */,
+				B00000000000000000000014 /* CardBrowserScreen.swift */,
+				B00000000000000000000015 /* CardDetailScreen.swift */,
+				B00000000000000000000016 /* CardData */,
+				B00000000000000000000017 /* CardPrintings.swift */,
+FA9100000000000000000002,
+FA9000000000000000000002,
+FA9000000000000000000004,
+				B00000000000000000000018 /* CardPrintingsScreen.swift */,
+			);
+			path = Vrains;
+			sourceTree = "<group>";
+		};
+		A00000000000000000000008 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				A00000000000000000000005 /* Vrains.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		A0000000000000000000000C /* Vrains */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A0000000000000000000000F /* Build configuration list for PBXNativeTarget "Vrains" */;
+			buildPhases = (
+                FB3401800000000000000001 /* Validate Simulator Signing */,
+				A00000000000000000000009 /* Sources */,
+				A0000000000000000000000A /* Frameworks */,
+				A0000000000000000000000B /* Resources */,
+				F00000000000000000000001 /* Embed Private Configuration */,
+);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = Vrains;
+			productName = Vrains;
+			productReference = A00000000000000000000005 /* Vrains.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A0000000000000000000000D /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastSwiftUpdateCheck = 1640;
+				LastUpgradeCheck = 1640;
+				TargetAttributes = {
+					A0000000000000000000000C = {
+						CreatedOnToolsVersion = 16.4;
+					};
+				};
+			};
+			buildConfigurationList = A0000000000000000000000E /* Build configuration list for PBXProject "Vrains" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+				"zh-Hans",
+			);
+			mainGroup = A00000000000000000000006;
+			productRefGroup = A00000000000000000000008 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				A0000000000000000000000C /* Vrains */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		A0000000000000000000000B /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C00000000000000000000016 /* CardData in Resources */,
+				C00000000000000000000019 /* Assets.xcassets in Resources */,
+				F20000000000000000000003 /* LaunchScreen.storyboard in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+        FB3401800000000000000001 /* Validate Simulator Signing */ = {
+            isa = PBXShellScriptBuildPhase;
+            alwaysOutOfDate = 1;
+            buildActionMask = 2147483647;
+            files = ();
+            inputPaths = ("$(SRCROOT)/scripts/validate_simulator_signing.sh");
+            name = "Validate Simulator Signing";
+            outputPaths = ();
+            runOnlyForDeploymentPostprocessing = 0;
+            shellPath = /bin/sh;
+            shellScript = "/bin/sh \"$SRCROOT/scripts/validate_simulator_signing.sh\"";
+        };
+
+		F00000000000000000000001 /* Embed Private Configuration */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Embed Private Configuration";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/JHSProtocolProfile.json",
+                "$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/PrivateConfiguration.json",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "python3 \"${SRCROOT}/scripts/local_resources.py\" embed-config\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		A00000000000000000000009 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				FD0000000000000000000001,
+FD0000000000000000000002,
+AD1000000000000000000001,
+AD1000000000000000000002,
+AD1000000000000000000003,
+AD1000000000000000000004,
+A00000000000000000000001 /* VrainsApp.swift in Sources */,
+				A00000000000000000000002 /* ContentView.swift in Sources */,
+				F20000000000000000000001 /* DataStormLaunchScreen.swift in Sources */,
+				F10000000000000000000003 /* DuelLobbyScreen.swift in Sources */,
+				F10000000000000000000001 /* DuelLobbyStore.swift in Sources */,
+				C00000000000000000000001 /* AppStore.swift in Sources */,
+				C00000000000000000000002 /* DesignSystem.swift in Sources */,
+				C00000000000000000000003 /* ExploreScreens.swift in Sources */,
+				CA0000000000000000000001 /* BanlistScreen.swift in Sources */,
+				CA0000000000000000000002,
+                FC0000000000000000000001 /* DeckImageExport.swift in Sources */,
+                FB1200000000000000000001 /* CardImageExport.swift in Sources */,
+                FB0000000000000000000001 /* DeckDragging.swift in Sources */,
+                FA0000000000000000000004 /* DeckScreens.swift in Sources */,
+                FA0000000000000000000002 /* DeckEditing.swift in Sources */,
+				C00000000000000000000004 /* DetailSheets.swift in Sources */,
+				C00000000000000000000005 /* ProfileScreen.swift in Sources */,
+				C00000000000000000000006 /* APIClient.swift in Sources */,
+				C00000000000000000000007 /* AccountModels.swift in Sources */,
+				C00000000000000000000008 /* SessionStorage.swift in Sources */,
+				C00000000000000000000009 /* AccountStore.swift in Sources */,
+				C0000000000000000000000A /* TestAPITransport.swift in Sources */,
+				C0000000000000000000000B /* PersonalDataViews.swift in Sources */,
+				C0000000000000000000000C /* NewsStore.swift in Sources */,
+				C0000000000000000000000D /* HomeScreen.swift in Sources */,
+				C0000000000000000000000E /* NewsDetailScreen.swift in Sources */,
+				C0000000000000000000000F /* MatchStore.swift in Sources */,
+				C00000000000000000000010 /* MatchesScreen.swift in Sources */,
+				C00000000000000000000011 /* CardModels.swift in Sources */,
+				C00000000000000000000012 /* CardDatabase.swift in Sources */,
+				C00000000000000000000013 /* CardUpdates.swift in Sources */,
+                F90000000000000000000001 /* NeuronArtwork.swift in Sources */,
+				C00000000000000000000014 /* CardBrowserScreen.swift in Sources */,
+				C00000000000000000000015 /* CardDetailScreen.swift in Sources */,
+				C00000000000000000000017 /* CardPrintings.swift in Sources */,
+FA9100000000000000000001,
+FA9000000000000000000001,
+FA9000000000000000000003,
+				C00000000000000000000018 /* CardPrintingsScreen.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		A00000000000000000000010 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_TESTABILITY = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		A00000000000000000000011 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		A00000000000000000000012 /* Debug */ = {
+			isa = XCBuildConfiguration;
+            baseConfigurationReference = AF2300000000000000000001;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Vrains/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Vrains;
+                INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "将生成的卡片或卡组图片保存到你的相册。";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = app.vrains.ios;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		A00000000000000000000013 /* Release */ = {
+			isa = XCBuildConfiguration;
+            baseConfigurationReference = AF2300000000000000000001;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Vrains/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Vrains;
+                INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "将生成的卡片或卡组图片保存到你的相册。";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = app.vrains.ios;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		A0000000000000000000000E /* Build configuration list for PBXProject "Vrains" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A00000000000000000000010 /* Debug */,
+				A00000000000000000000011 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A0000000000000000000000F /* Build configuration list for PBXNativeTarget "Vrains" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A00000000000000000000012 /* Debug */,
+				A00000000000000000000013 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = A0000000000000000000000D /* Project object */;
+}

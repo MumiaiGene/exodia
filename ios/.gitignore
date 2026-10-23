@@ -1,0 +1,22 @@
+# Offline card resources are restored with scripts/local_resources.py
+/Vrains/CardData/*
+!/Vrains/CardData/README.md
+!/Vrains/CardData/catalog-runtime.sql
+
+# Local documentation, research snapshots and data preparation tools
+/docs/
+/research/
+/tools/
+
+# Local verification targets
+/VrainsTests/
+/VrainsUITests/
+
+# Unused Unity bridge files are outside the native iOS target
+/Vrains/Exodia-Bridging-Header.h
+/Vrains/UnityDuelHost.h
+/Vrains/UnityDuelHost.mm
+/Vrains/UnityDuelLauncher.swift
+
+# Generated captures from local tools
+/design/previews/

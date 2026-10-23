@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>UIBackgroundModes</key><array><string>processing</string></array>
+<key>BGTaskSchedulerPermittedIdentifiers</key><array><string>app.vrains.ios.jhs.match.*</string></array>
+<key>NSLocationWhenInUseUsageDescription</key><string>用于查找您附近的卡店和赛事。</string>
+<key>UTExportedTypeDeclarations</key><array><dict>
+<key>UTTypeIdentifier</key><string>com.exodia.deck-card</string>
+<key>UTTypeDescription</key><string>卡组卡片</string>
+<key>UTTypeConformsTo</key><array><string>public.data</string></array>
+</dict></array>
+</dict></plist>

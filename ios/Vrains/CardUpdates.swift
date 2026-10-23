@@ -334,11 +334,36 @@ actor CardUpdater {
     }
 }
 
+@MainActor
+struct LaunchUpdateCheckSchedule {
+    static let lastAttemptKey = "exodia.catalog.lastAutomaticUpdateAttempt"
+    private let defaults: UserDefaults
+    private let enabled: Bool
+    init(defaults: UserDefaults = .standard, enabled: Bool = CardCatalog.automaticUpdateChecksEnabled,
+         arguments: [String] = ProcessInfo.processInfo.arguments, environment: [String: String] = ProcessInfo.processInfo.environment) {
+        self.defaults = defaults
+        self.enabled = enabled && !arguments.contains("--uitesting") && !arguments.contains("--verify-saved-account")
+            && environment["XCTestConfigurationFilePath"] == nil && environment["XCTestBundlePath"] == nil
+            && environment["XCODE_RUNNING_FOR_PREVIEWS"] != "1"
+    }
+    func beginCheck(at date: Date = .now, calendar: Calendar = .current) -> Bool {
+        guard enabled else { return false }
+        if let last = defaults.object(forKey: Self.lastAttemptKey) as? Date {
+            guard last <= date, !calendar.isDate(last, inSameDayAs: date) else { return false }
+        }
+        // Claim the day before awaiting network work, including failed or cancelled attempts.
+        defaults.set(date, forKey: Self.lastAttemptKey)
+        return true
+    }
+}
+
 @Observable @MainActor
 final class CardCatalog {
-    // Temporarily pause launch checks while validating the duel integration.
-    // Manual checks in Settings remain available. Set true to restore.
+    #if DEBUG
     static let automaticUpdateChecksEnabled = false
+    #else
+    static let automaticUpdateChecksEnabled = true
+    #endif
     let database:CardDatabase
     let updater:CardUpdater
     private(set) var metadata:CardMetadata?
@@ -356,31 +381,26 @@ final class CardCatalog {
     private(set) var isChecking=false
     private(set) var startupResolved=false
     private var installTask:Task<Void,Error>?
+    private let launchChecks: LaunchUpdateCheckSchedule
     var canCancelUpdate:Bool {installTask != nil}
     var message:String?
     var selectedFormat=CardFormat(rawValue:UserDefaults.standard.string(forKey:"exodia.selectedCardFormat") ?? "") ?? .ocg {
         didSet{UserDefaults.standard.set(selectedFormat.rawValue,forKey:"exodia.selectedCardFormat")}
     }
-    init(database:CardDatabase=CardDatabase(),transport:any APITransport=NetworkTransport(),artwork:any CatalogArtworkSource=NeuronArtworkStore.shared,jhs:any CatalogJHSSource=CatalogJHSClient()) {
+    init(database:CardDatabase=CardDatabase(),transport:any APITransport=NetworkTransport(),artwork:any CatalogArtworkSource=NeuronArtworkStore.shared,jhs:any CatalogJHSSource=CatalogJHSClient(),launchChecks:LaunchUpdateCheckSchedule=LaunchUpdateCheckSchedule()) {
         self.database=database;updater=CardUpdater(transport:transport,artwork:artwork,jhs:jhs)
+        self.launchChecks=launchChecks
     }
     func prepare()async {
         do{metadata=try await database.metadata();localSources=try await database.updateSourceOverview()}catch{message=error.localizedDescription}
     }
     func checkAtLaunch()async {
         startupResolved=false
-        #if DEBUG
-        let arguments=ProcessInfo.processInfo.arguments
-        if arguments.contains("--uitesting-update-available") {
-            pendingUpdate = .init(packs:[],banlists:[],neuron:.init(version:"1.1.615",estimatedBytes:4_000_000,hasChanges:true),estimatedBytes:4_000_000)
-            showUpdatePrompt=true;return
-        }
-        #endif
-        guard Self.automaticUpdateChecksEnabled else {
+        guard !isUpdating else { return }
+        guard launchChecks.beginCheck() else {
             skipUpdate()
             return
         }
-        if ProcessInfo.processInfo.arguments.contains("--uitesting") {startupResolved=true;return}
         await update()
     }
     func update(force:Bool=true)async {

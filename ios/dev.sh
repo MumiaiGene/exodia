@@ -86,14 +86,14 @@ setup() {
 }
 
 build_app() {
-    local destination="$1" derived_data="$2"
-    shift 2
-    xcodebuild -project "$IOS_DEV_PROJECT" -scheme Vrains -configuration Debug \
+    local destination="$1" derived_data="$2" configuration="$3"
+    shift 3
+    xcodebuild -project "$IOS_DEV_PROJECT" -scheme Vrains -configuration "$configuration" \
         -destination "$destination" -derivedDataPath "$derived_data" "$@" build
 }
 
 build_simulator() {
-    build_app "${1:-generic/platform=iOS Simulator}" "$IOS_DEV_BUILD/DerivedData" \
+    build_app "${1:-generic/platform=iOS Simulator}" "$IOS_DEV_BUILD/DerivedData" Debug \
         CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=-
 }
 
@@ -123,9 +123,10 @@ run() {
 run_device() {
     require_xcode
     local device_id="${1:-}"
-    [ -n "$device_id" ] || fail '用法：bash ios/dev.sh run-device <iPhone UDID>。连接并解锁手机后执行。'
+    local configuration=Release
+    [ -n "$device_id" ] || fail '用法：bash ios/dev.sh run-device <iPhone UDID>。真机使用 Release；连接并解锁手机后执行。'
     local settings app_bundle_id team_id
-    settings="$(xcodebuild -project "$IOS_DEV_PROJECT" -scheme Vrains -configuration Debug \
+    settings="$(xcodebuild -project "$IOS_DEV_PROJECT" -scheme Vrains -configuration "$configuration" \
         -sdk iphoneos -showBuildSettings -json | python3 -c '
 import json, sys
 settings = next(item["buildSettings"] for item in json.load(sys.stdin) if item["target"] == "Vrains")
@@ -136,10 +137,10 @@ print(settings["PRODUCT_BUNDLE_IDENTIFIER"], settings.get("DEVELOPMENT_TEAM", ""
     python3 "$IOS_DEV_ROOT/scripts/device_provisioning.py" prepare \
         --bundle-id "$app_bundle_id" --team-id "$team_id" \
         --backup-dir "$IOS_DEV_BUILD/SigningProfileBackups"
-    build_app 'generic/platform=iOS' "$IOS_DEV_BUILD/DeviceDerivedData" \
+    build_app 'generic/platform=iOS' "$IOS_DEV_BUILD/DeviceDerivedData" "$configuration" \
         -allowProvisioningUpdates -allowProvisioningDeviceRegistration \
         CODE_SIGN_STYLE=Automatic CODE_SIGNING_ALLOWED=YES
-    local app="$IOS_DEV_BUILD/DeviceDerivedData/Build/Products/Debug-iphoneos/Vrains.app"
+    local app="$IOS_DEV_BUILD/DeviceDerivedData/Build/Products/$configuration-iphoneos/Vrains.app"
     codesign --verify --deep --strict "$app"
     python3 "$IOS_DEV_ROOT/scripts/device_provisioning.py" verify \
         --bundle-id "$app_bundle_id" --team-id "$team_id" --device "$device_id" \
@@ -153,16 +154,19 @@ case "${1:-help}" in
     setup) setup "${2:-}" ;;
     build) build ;;
     run) run "${2:-}" ;;
-    run-device) run_device "${2:-}" ;;
+    run-device)
+        [ "$#" -le 2 ] || fail '真机固定使用 Release。用法：bash ios/dev.sh run-device <iPhone UDID>。'
+        run_device "${2:-}"
+        ;;
     open) require_xcode; open -a "${DEVELOPER_DIR%/Contents/Developer}" "$IOS_DEV_PROJECT" ;;
     help|-h|--help)
         printf '%s\n' \
             '用法：bash ios/dev.sh <command>' \
             '  doctor                 检查 Xcode、Swift、iOS SDK 和模拟器' \
             '  setup [Xcode.app 路径]  配置 Xcode 并安装 iOS 模拟器运行时' \
-            '  build                  构建使用本地签名的模拟器 App' \
-            '  run [模拟器 UDID]       构建并在模拟器中启动 App' \
-            '  run-device <UDID>      真机自动签名安装与描述文件检查' \
+            '  build                  构建 Debug 模拟器 App，使用本地签名' \
+            '  run [模拟器 UDID]       构建并在模拟器中启动 Debug App' \
+            '  run-device <UDID>       构建并在真机中启动 Release App；检查签名及描述文件' \
             '  open                   用 Xcode 打开工程'
         ;;
     *) fail "未知命令：$1。运行 bash ios/dev.sh help 查看用法。" ;;

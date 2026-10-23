@@ -77,7 +77,7 @@ struct MatchDetail: Sendable {
     var checkInStatus: String {
         switch hasCheckedIn { case true: "已签到"; case false: "未签到"; case nil: "签到状态未知" }
     }
-    var canViewPersonalResults: Bool { hasParticipated && (statusID == 3 || statusID == 4 || statusID == 8) }
+    var canViewPersonalResults: Bool { hasParticipated && (statusID == 3 || statusID == 4 || statusID == 5 || statusID == 8) }
     var kind: String { MatchKind.catalog.first { $0.id == typeID }?.title ?? "比赛" }
 }
 
@@ -211,7 +211,7 @@ struct MatchSummaryScreen: View {
                         .background(Color.green.opacity(0.1), in: Capsule())
                         .accessibilityIdentifier("match.detail.signedUp")
                 } else {
-                    Text(detail.awaitingOpening() ? "待开放" : detail.statusID == 2 && detail.isFull && !detail.hasParticipated && !detail.hasOrder ? "报名已满" : (detail.statusID == 4 ? "比赛中" : detail.statusID.flatMap(MatchStatus.init(rawValue:))?.title) ?? "比赛")
+                    Text(detail.awaitingOpening() ? "待开放" : detail.statusID == 2 && detail.isFull && !detail.hasParticipated && !detail.hasOrder ? "报名已满" : ([4, 5].contains(detail.statusID ?? 0) ? "比赛中" : detail.statusID.flatMap(MatchStatus.init(rawValue:))?.title) ?? "比赛")
                         .foregroundStyle(.secondary)
                 }
 
@@ -318,7 +318,7 @@ struct MatchSummaryScreen: View {
             try Task.checkCancellation()
             guard version == loadVersion, sessionVersion == account.sessionVersion else { return }
             if loadedSessionVersion != sessionVersion {
-                detailTab = account.isLoggedIn && value.hasParticipated && [3, 4].contains(value.statusID ?? 0) ? 1 : 0
+                detailTab = account.isLoggedIn && value.hasParticipated && [3, 4, 5].contains(value.statusID ?? 0) ? 1 : 0
             }
             detail = value
             loadedSessionVersion = sessionVersion
@@ -480,7 +480,7 @@ struct MatchResultsSection: View {
     @State private var generation = UUID()
     @State private var roundChoices: [SwissRankRound] = []
     @State private var selectedRound = ""
-    private var isLive: Bool { [3, 4].contains(status) && !match.isBackup }
+    private var isLive: Bool { [3, 4, 5].contains(status) && !match.isBackup }
     var body: some View {
         ForEach(showsKnockout ? knockout : []) { round in
             Section("淘汰赛 · " + round.title) {

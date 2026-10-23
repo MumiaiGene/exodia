@@ -108,8 +108,12 @@ final class RankingStore {
 
 struct RankingScreen: View {
     @Environment(AccountStore.self) private var account
+    #if DEBUG
     @State private var store = RankingStore(api: BusinessAPI(transport:
         ProcessInfo.processInfo.arguments.contains("--uitesting") ? TestAPITransport() : NetworkTransport()))
+    #else
+    @State private var store = RankingStore(api: BusinessAPI())
+    #endif
     @State private var category: RankingCategory = .ocg
     @State private var season = ""
     var body: some View {

@@ -73,6 +73,8 @@ bash ios/dev.sh run <模拟器 UDID>
 bash ios/dev.sh run-device <真机 UDID>
 ```
 
+真机的 `run-device` 固定使用 Release 配置；模拟器的 `build` 和 `run` 固定使用 Debug 配置。脚本不接受额外的构建配置参数。
+
 App 启动时加载本地资料并检查卡包、禁限卡表和卡图更新。用户确认后下载并事务更新数据库。新闻、账号、赛事和集换社功能使用实际服务接口；`--uitesting` 启动参数为界面验证提供模拟数据。
 
 ## 配置与资源迁移

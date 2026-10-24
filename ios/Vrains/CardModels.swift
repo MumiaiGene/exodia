@@ -5,9 +5,9 @@ enum CardCatalogError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .database: "无法读取本机卡库，请稍后重试。"
-        case .invalidData: "下载的卡片数据格式不完整，原卡库已保留。"
-        case .checksum: "卡片数据校验失败，原卡库已保留，请重新检查更新。"
-        case .archive: "卡片数据包无法解压，原卡库已保留。"
+        case .invalidData: "下载的卡牌数据格式不完整，原卡库已保留。"
+        case .checksum: "卡牌数据校验失败，原卡库已保留，请重新检查更新。"
+        case .archive: "卡牌数据包无法解压，原卡库已保留。"
         case .invalidRange: "请填写有效的数值范围，最小值不能大于最大值。"
         case .incompatibleSchema: "卡库版本不兼容，请更新 App。"
         }

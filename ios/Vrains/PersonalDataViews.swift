@@ -53,8 +53,9 @@ struct PersonalMatchesSheet: View {
     @State private var version = UUID()
     @State private var page = 0
     @State private var hasMore = false
-    private let titles = [1: "已报名", 2: "比赛中", 3: "已结束"]
-    private var visible: [MatchItem] { items.filter { $0.statusID == (selection == 1 ? 2 : selection == 2 ? 3 : 8) } }
+    private let titles = [1: "已报名", 2: "进行中", 3: "已结束"]
+    // The server already filters the requested lifecycle; rows may carry finer phase IDs.
+    private var visible: [MatchItem] { items }
     var body: some View {
         NavigationStack {
             List {
@@ -75,10 +76,10 @@ struct PersonalMatchesSheet: View {
                         .accessibilityIdentifier("personal.match.\(match.id)")
                         .onAppear { if match.id == items.last?.id, hasMore { Task { await load(reset: false) } } }
                 }
-                if loading { ProgressView("正在读取赛事") }
-                else if error == nil, visible.isEmpty, account.isLoggedIn { Text("暂无\(titles[selection]!)的比赛").foregroundStyle(.secondary) }
+                if loading { ProgressView("正在读取比赛") }
+                else if error == nil, visible.isEmpty, account.isLoggedIn { EmptyState(icon:"calendar",title:"暂无\(titles[selection]!)的比赛",subtitle:"") }
             }.navigationTitle("我的比赛").navigationBarTitleDisplayMode(.inline)
-                .toolbar { ToolbarItem(placement: .cancellationAction) { CompactBackButton() } }
+                .toolbar { ToolbarItem(placement: .cancellationAction) { ModalCloseButton() } }
                 .task(id: "\(account.sessionVersion)-\(selection)") { await load() }
                 .refreshable { await load() }
         }
@@ -121,15 +122,15 @@ struct MessagesSheet: View {
     @State private var total = 0
     @State private var hasMore = false
     var body: some View {
+        NavigationStack {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                HStack { GlassBackButton(); Text("消息中心").font(.title2.bold()); Spacer() }
                 if let error {
                     Text(error).font(.subheadline).foregroundStyle(Design.secondary)
                     AccentButton(title: "重试") { Task { await load(reset: true) } }
                 }
                 if !loading, error == nil, items.isEmpty {
-                    EmptyState(icon: "bell", title: "暂时没有消息", subtitle: "赛事通知会出现在这里。")
+                    EmptyState(icon: "bell", title: "暂无消息", subtitle: "比赛通知会出现在这里。")
                 }
                 LazyVStack(spacing: 20) {
                     ForEach(items) { item in
@@ -146,7 +147,11 @@ struct MessagesSheet: View {
             }.padding(24)
         }.background(Design.canvas).task { await load(reset: true) }
             .automaticPagination(itemCount: items.count, canLoadMore: hasMore && error == nil, isLoading: loading) { await load(reset: false) }
-            .refreshable { await load(reset: true) }.presentationDragIndicator(.visible).presentationCornerRadius(32)
+            .refreshable { await load(reset: true) }
+            .navigationTitle("消息中心").navigationBarTitleDisplayMode(.inline)
+            .toolbar {ToolbarItem(placement:.cancellationAction){ModalCloseButton().accessibilityIdentifier("navigation.back")}}
+            .presentationDragIndicator(.visible)
+        }
     }
     private func load(reset: Bool) async {
         guard !loading, reset || hasMore else { return }
@@ -191,7 +196,7 @@ struct ProfileDetailsSheet: View {
                 LabeledContent("个性签名", value: account.profile?.signature ?? "尚未填写")
                 if let title = account.profile?.title { LabeledContent("称号", value: title) }
             }.navigationTitle("个人资料").navigationBarTitleDisplayMode(.inline)
-                .toolbar { ToolbarItem(placement: .topBarLeading) { CompactBackButton() } }
+                .toolbar { ToolbarItem(placement: .topBarLeading) { ModalCloseButton() } }
         }
     }
 }
@@ -252,13 +257,13 @@ struct MatchOrdersSheet: View {
                 }
                 if loading { ProgressView() }
                 if let error { Text(error).foregroundStyle(.secondary); Button("重试") { Task { await load(reset:true) } } }
-                else if !loading, orders.isEmpty, !hasMore { Text("暂无比赛订单").foregroundStyle(.secondary) }
+                else if !loading, orders.isEmpty, !hasMore { EmptyState(icon:"receipt",title:"暂无比赛订单",subtitle:"") }
                 if hasMore, !loading, error == nil {
                     if orders.isEmpty { ProgressView().task(id:page) { await load(reset:false) } }
                     else { Button("加载更多") { Task { await load(reset:false) } } }
                 }
             }.navigationTitle("比赛订单").navigationBarTitleDisplayMode(.inline)
-                .toolbar { ToolbarItem(placement:.topBarLeading) { CompactBackButton() } }
+                .toolbar { ToolbarItem(placement:.topBarLeading) { ModalCloseButton() } }
                 .task(id:account.sessionVersion) { await load(reset:true) }
                 .refreshable { await load(reset:true) }
         }

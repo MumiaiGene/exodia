@@ -25,11 +25,15 @@ struct CatalogCardDetailScreen: View {
     private var saved: Bool { store.savedCards.contains(card.favoriteKey) || card.passcode.map { store.savedCards.contains(String($0)) } == true }
 
     var body: some View {
+        NavigationStack {
         ScrollView {
             VStack(alignment: .leading, spacing: 23) {
+                Text(current.name).font(.title2.bold()).frame(maxWidth:.infinity,alignment:.leading)
+                    .accessibilityIdentifier("card.detail.name").accessibilityHint("长按复制卡名")
+                    .contentShape(Rectangle()).onLongPressGesture(minimumDuration:0.5) {copyName()}
                 hero
                 if !current.pendulumDescription.isEmpty { effect("灵摆效果", text: current.pendulumDescription) }
-                effect("卡片详情", text: current.description.isEmpty ? "暂无公开效果文本" : current.description)
+                effect("卡牌文本", text: current.description.isEmpty ? "暂无公开效果文本" : current.description)
                 Link(destination:URL(string:"\(PrivateConfiguration.value("officialDatabaseOrigin"))/yugiohdb/faq_search.action?ope=4&cid=\(card.cid)&request_locale=ja")!) {
                     Label("在线查询官方 Q&A",systemImage:"questionmark.circle")
                         .font(.subheadline).foregroundStyle(Design.accent)
@@ -37,7 +41,7 @@ struct CatalogCardDetailScreen: View {
                 }.accessibilityIdentifier("card.detail.official.qa")
                 if loadedPrintings {
                     HStack {
-                        Text("卡片收录").font(.system(size: 22, weight: .bold)).accessibilityIdentifier("card.detail.printings.heading")
+                        Text("卡牌收录").font(.system(size: 22, weight: .bold)).accessibilityIdentifier("card.detail.printings.heading")
                         Spacer()
                         if printings.isEmpty {
                             Text("0").font(.system(size:13,weight:.medium)).foregroundStyle(Design.secondary)
@@ -74,17 +78,7 @@ struct CatalogCardDetailScreen: View {
                     } }
                 }
             }.padding(.horizontal, 22).padding(.vertical, 20)
-        }.background(Design.canvas).accessibilityIdentifier("card.detail.scroll").safeAreaInset(edge: .top) {
-            HStack(spacing: 10) {
-                detailHeaderButton("chevron.left",label:"返回") {dismiss()}
-                    .accessibilityIdentifier("navigation.back")
-                Text(current.name).font(.system(size: 17, weight: .semibold)).foregroundStyle(Design.ink)
-                    .multilineTextAlignment(.center).lineLimit(2).frame(maxWidth: .infinity)
-                    .accessibilityIdentifier("card.detail.name").accessibilityHint("长按复制卡名")
-                    .contentShape(Rectangle()).onLongPressGesture(minimumDuration:0.5) { copyName() }
-                detailHeaderButton("square.and.arrow.up",label:"分享") { sharingCard=true }.accessibilityIdentifier("card.detail.share")
-            }.padding(.horizontal, 18).padding(.vertical, 12).background(Design.canvas)
-        }.safeAreaInset(edge:.bottom) {
+        }.background(Design.canvas).accessibilityIdentifier("card.detail.scroll").safeAreaInset(edge:.bottom) {
             if let deckEditor { DeckCardQuantityControls(session:deckEditor,card:current,ciid:selection > 0 ? selection : 1) }
         }.task(id: "\(catalog.revision)-\(catalog.artworkRevision)") {
             await readLocal()
@@ -98,14 +92,13 @@ struct CatalogCardDetailScreen: View {
         .sheet(isPresented:$showingAllPrintings) { AllCardPrintingsScreen(name:current.name,rows:printings,cardCID:current.cid,artworkID:selection > 0 ? selection:nil) }
             .sheet(item:$marketplacePrinting) { JHSMarketplaceScreen(cardName:current.name,printing:$0,cardCID:current.cid,artworkID:selection > 0 ? selection:nil) }
             .onDisappear { copyDismissal?.cancel();copiedName=false }
-            .presentationDragIndicator(.visible).presentationCornerRadius(32)
-    }
-
-    private func detailHeaderButton(_ symbol:String,label:String,action:@escaping ()->Void)->some View {
-        Button(action:action) {
-            Image(systemName:symbol).font(.system(size:16,weight:.medium)).foregroundStyle(Design.ink)
-                .frame(width:44,height:44).prototypeGlass(cornerRadius:22)
-        }.buttonStyle(.plain).accessibilityLabel(label)
+            .navigationTitle("卡牌详情").navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement:.cancellationAction) {ModalCloseButton().accessibilityIdentifier("navigation.back")}
+                ToolbarItem(placement:.topBarTrailing) {Button {sharingCard=true} label:{Image(systemName:"square.and.arrow.up").frame(minWidth:44,minHeight:44)}.accessibilityLabel("分享").accessibilityIdentifier("card.detail.share")}
+            }
+            .presentationDragIndicator(.visible)
+        }
     }
 
     private var selectedLimitCopies: Int? {
@@ -270,8 +263,10 @@ struct AllCardPrintingsScreen: View {
     var artworkID:Int64?=nil
     @State private var marketplacePrinting: CardPrintingDisplay?
     var body: some View {
+        NavigationStack {
         ScrollView {
             LazyVStack(spacing:10) {
+                Text(name).font(.title2.bold()).frame(maxWidth:.infinity,alignment:.leading).accessibilityIdentifier("card.all.printings.name")
                 ForEach(rows) { printing in
                     Button {marketplacePrinting=printing} label: {
                         HStack(alignment:.top,spacing:12) {
@@ -291,11 +286,11 @@ struct AllCardPrintingsScreen: View {
                 }
             }.padding(22)
         }.background(Design.canvas).accessibilityIdentifier("card.all.printings.scroll")
-            .safeAreaInset(edge:.top) {
-                HStack(spacing:12) { GlassBackButton();Text(name).font(.system(size:21,weight:.bold)).lineLimit(2).accessibilityIdentifier("card.all.printings.name");Spacer() }
-                    .padding(.horizontal,22).padding(.vertical,14).background(Design.canvas)
-            }.presentationDragIndicator(.visible).presentationCornerRadius(32)
+            .navigationTitle("卡牌收录").navigationBarTitleDisplayMode(.inline)
+            .toolbar {ToolbarItem(placement:.cancellationAction){ModalCloseButton().accessibilityIdentifier("navigation.back")}}
+            .presentationDragIndicator(.visible)
             .sheet(item:$marketplacePrinting) { JHSMarketplaceScreen(cardName:name,printing:$0,cardCID:cardCID,artworkID:artworkID) }
+        }
     }
 }
 
@@ -470,10 +465,10 @@ struct JHSMarketplaceScreen: View {
                 Button("好",role:.cancel){}
             } message:{Text(cartError ?? "")}
             .alert("需要绑定集换社",isPresented:$loginRequired) {
-                Button("知道了",role:.cancel){}
+                Button("好",role:.cancel){}
             } message:{Text("请先前往主页右上角个人页，在设置中绑定集换社账号。绑定后即可查看卖家商品并加入购物车。")}
             .alert("未能加入预购清单",isPresented:Binding(get:{preorderError != nil},set:{if !$0{preorderError=nil}})) {Button("好",role:.cancel){}} message:{Text(preorderError ?? "")}
-        }.presentationDragIndicator(.visible).presentationCornerRadius(32)
+        }.presentationDragIndicator(.visible)
     }
     private var configurationState: some View {
         VStack(spacing:14) {
@@ -679,39 +674,39 @@ struct CardDataScreen: View {
             List {
                 Section {
                     if let metadata=catalog.metadata {
-                        LabeledContent("本机卡片",value:"\(metadata.count.formatted()) 张").monospacedDigit()
+                        LabeledContent("本机卡牌",value:"\(metadata.count.formatted()) 张").monospacedDigit()
                         LabeledContent("资料更新",value:metadata.updatedAt.isEmpty ? "—":String(metadata.updatedAt.prefix(10)))
                         LabeledContent("最近检查",value:metadata.checkedAt.isEmpty ? "尚未检查":String(metadata.checkedAt.prefix(10)))
                     } else {Text("正在读取本机资料…").foregroundStyle(.secondary)}
-                } header:{Text("本机资料")} footer:{Text("卡片资料与日文卡图均保存在本机；无法映射的卡片显示卡背。")}
+                } header:{Text("本机资料")}
                 if let plan=catalog.pendingUpdate {
                     Section {
                         LabeledContent("预估下载",value:plan.sizeLabel)
                         ForEach(plan.itemLabels,id:\.self) {Text($0).font(.subheadline).fixedSize(horizontal:false,vertical:true)}
                         Button("查看并更新"){catalog.showUpdatePrompt=true}.frame(minHeight:44)
-                    } header:{Text("本次待更新")} footer:{Text("卡片数量会在读取变更目录后确定，卡图不全量下载。")}
+                    } header:{Text("本次待更新")}
                 }
                 Section {
                     ForEach(CatalogSource.allCases) {source in CatalogSourceRow(source:source)}
-                } header:{Text("数据来源与状态")} footer:{Text("“无更新”仅表示本次检查范围没有发现变更。JHS 与 NW 随变更卡片更新；JHS 暂无版本时保留任务，后续继续补齐。")}
+                } header:{Text("数据来源与状态")}
                 if let message=catalog.message {
                     Section {Text(message).font(.subheadline).fixedSize(horizontal:false,vertical:true).accessibilityIdentifier("cards.update.message")}
                 }
                 Section {
-                    Text("日文卡图和异画已完整内置，离线可用。后续新增与替换图片随资料更新下载，持久保存，不会被缓存清理删除。").font(.subheadline)
-                } header:{Text("卡图资料")}
-            }.listStyle(.insetGrouped).navigationTitle("卡片数据").navigationBarTitleDisplayMode(.inline)
-                .toolbar {ToolbarItem(placement:.topBarLeading) {Button {dismiss()} label:{Image(systemName:"xmark")}.accessibilityLabel("关闭").accessibilityIdentifier("cards.update.close")}}
+                    Text("已下载的资料和卡图可离线查看。缺少对应卡图时显示卡背。").font(.subheadline)
+                } header:{Text("离线使用")}
+            }.listStyle(.insetGrouped).navigationTitle("卡牌数据").navigationBarTitleDisplayMode(.inline)
+                .toolbar {ToolbarItem(placement:.topBarLeading) {ModalCloseButton().accessibilityIdentifier("cards.update.close")}}
                 .safeAreaInset(edge:.bottom,spacing:0) {
                     VStack(spacing:12) {
                         if catalog.isUpdating {CatalogUpdateProgress()}
                         if catalog.canCancelUpdate {
-                            Button("取消更新"){catalog.cancelUpdate()}.font(.headline).frame(maxWidth:.infinity,minHeight:54).buttonStyle(.bordered)
+                            Button("取消更新"){catalog.cancelUpdate()}.font(.headline).frame(maxWidth:.infinity).secondaryActionStyle()
                         } else {
                             Button {Task {await catalog.update()}} label: {
                                 ZStack {Label("检查资料更新",systemImage:"arrow.clockwise").opacity(catalog.isUpdating ? 0:1);if catalog.isUpdating {ProgressView()}}
-                                    .font(.headline).frame(maxWidth:.infinity,minHeight:54)
-                            }.buttonStyle(.borderedProminent).disabled(catalog.isUpdating).accessibilityLabel(catalog.isUpdating ? "正在检查资料更新":"检查资料更新").accessibilityIdentifier("cards.update.check")
+                                    .font(.headline).frame(maxWidth:.infinity)
+                            }.primaryActionStyle().disabled(catalog.isUpdating).accessibilityLabel(catalog.isUpdating ? "正在检查资料更新":"检查资料更新").accessibilityIdentifier("cards.update.check")
                         }
                     }.padding(20).background(.bar)
                 }
@@ -724,7 +719,7 @@ struct CatalogSourceRow:View {
     @Environment(CardCatalog.self) private var catalog
     let source:CatalogSource
     private var status:CatalogSourceStatus {
-        catalog.sourceStatuses[source] ?? .init(phase:[CatalogSource.cards,.translations,.jhs].contains(source) ? .dependent:.waiting,detail:source == .jhs ? "随变更卡片更新；尚无版本的卡片会持续补齐":"")
+        catalog.sourceStatuses[source] ?? .init(phase:[CatalogSource.cards,.translations,.jhs].contains(source) ? .dependent:.waiting,detail:source == .jhs ? "随变更卡牌更新；尚无版本的卡牌会持续补齐":"")
     }
     var body:some View {
         VStack(alignment:.leading,spacing:8) {
@@ -734,8 +729,16 @@ struct CatalogSourceRow:View {
             }
             Text(source.origin).font(.caption).foregroundStyle(.secondary)
             Text(catalog.localSources[source] ?? "正在读取本机状态…").font(.subheadline).fixedSize(horizontal:false,vertical:true)
-            if !status.detail.isEmpty {Text(status.detail).font(.footnote).foregroundStyle(status.phase == .failed ? Color.red:.secondary).fixedSize(horizontal:false,vertical:true)}
-        }.padding(.vertical,8).accessibilityElement(children:.combine).accessibilityIdentifier("cards.update.source."+source.rawValue)
+            if !status.detail.isEmpty {
+                if status.phase == .failed || status.phase == .pending {
+                    Text(status.detail).font(.footnote).foregroundStyle(status.phase == .failed ? Color.red:.secondary).fixedSize(horizontal:false,vertical:true)
+                } else {
+                    DisclosureGroup("更新详情") {
+                        Text(status.detail).font(.footnote).foregroundStyle(.secondary).fixedSize(horizontal:false,vertical:true)
+                    }.font(.footnote)
+                }
+            }
+        }.padding(.vertical,8).accessibilityElement(children:.contain).accessibilityIdentifier("cards.update.source."+source.rawValue)
     }
     private var badge:some View {
         HStack(spacing:4) {

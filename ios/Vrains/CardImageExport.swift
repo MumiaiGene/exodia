@@ -17,7 +17,7 @@ import Photos
         let ruby=names.first {$0.source=="jp_ruby"}?.name ?? japanese
         var sections:[(String,String)]=[]
         if !card.pendulumDescription.isEmpty {sections.append(("灵摆效果",card.pendulumDescription))}
-        sections.append(("卡片详情",card.description.isEmpty ? "暂无公开效果文本":card.description))
+        sections.append(("卡牌详情",card.description.isEmpty ? "暂无公开效果文本":card.description))
         let heights=sections.map {ceil(textHeight($0.1,width:1080,size:35))+effectTopInset+effectBottomInset}
         let height=534+heights.reduce(0,+)+CGFloat(max(0,sections.count-1))*24+30
         let format=UIGraphicsImageRendererFormat();format.scale=1;format.opaque=true;format.preferredRange = .standard
@@ -139,7 +139,7 @@ struct CardShareSheet:View {
     let card:CatalogCard
     let ciid:Int64
     var body:some View {
-        ImageShareSheet(title:"分享卡片",objectName:card.name,identifier:"card.share") {
+        ImageShareSheet(title:"分享卡牌",objectName:card.name,identifier:"card.share") {
             let details=try await catalog.database.details(cid:card.cid)
             let data=try await NeuronArtworkStore.shared.data(cid:card.cid,ciid:ciid)
             try Task.checkCancellation()

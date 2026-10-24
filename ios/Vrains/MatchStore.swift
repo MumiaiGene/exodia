@@ -5,14 +5,21 @@ enum MatchStatus: Int, CaseIterable, Identifiable {
     case registration = 2, ongoing = 3, ended = 8
     var id: Int { rawValue }
     var title: String {
-        switch self { case .registration: "可报名"; case .ongoing: "比赛中"; case .ended: "已结束" }
+        switch self { case .registration: "可报名"; case .ongoing: "进行中"; case .ended: "已结束" }
+    }
+    static func isOngoing(_ status: Int?) -> Bool {
+        status.map { (3...6).contains($0) } ?? false
+    }
+    static func hasResults(_ status: Int?) -> Bool {
+        // Access to existing results does not depend on the name of an internal phase.
+        status.map { (3...8).contains($0) } ?? false
     }
 }
 
 struct MatchKind: Identifiable, Hashable, Sendable {
     let id: Int
     let title: String
-    static let all = MatchKind(id: 0, title: "所有")
+    static let all = MatchKind(id: 0, title: "全部")
 }
 
 enum MatchEnvironment: Int, CaseIterable, Identifiable, Sendable {

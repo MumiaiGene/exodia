@@ -98,7 +98,7 @@ struct CardBrowserScreen: View {
             }
             .sheet(item: $selectedCard) { CatalogCardDetailScreen(card: $0) }
             .sheet(isPresented: $showingFilters) { CardFilterSheet(filter: $filter, favoritesMode: favoritesMode) }
-            .presentationDragIndicator(favoritesMode ? .visible : .automatic).presentationCornerRadius(32)
+            .presentationDragIndicator(favoritesMode ? .visible : .automatic)
     }
     private var embeddedWorkspace:some View {
         VStack(spacing:14) {
@@ -109,19 +109,15 @@ struct CardBrowserScreen: View {
             .background {GeometryReader {proxy in Color.clear.preference(key:DeckWorkspaceHeightKey.self,value:proxy.size.height)}}
     }
     private var embeddedSearchField:some View {
-        HStack(spacing:10) {
-            Image(systemName:"magnifyingglass").foregroundStyle(Design.secondary)
-            TextField("卡牌名或效果文本",text:$draftKeyword).submitLabel(.search).focused($searchFocused).autocorrectionDisabled()
-                .onSubmit {submitSearch()}.accessibilityIdentifier("deck.search.field")
-            if !draftKeyword.isEmpty {Button {draftKeyword="";submitSearch()} label:{Image(systemName:"xmark.circle.fill")}}
-        }.padding(14).background(Design.field,in:Capsule()).padding(.horizontal,18)
+        NativeDeckSearchBar(text:$draftKeyword,submit:submitSearch)
+            .frame(height:56).padding(.horizontal,18)
             .modifier(DeckSearchDropRegion(session:deckSession,drag:deckDrag))
     }
     private var resultsContent:some View {
         VStack(alignment: .leading, spacing: 16) {
                 if let errorMessage { Text(errorMessage).font(.subheadline).foregroundStyle(Design.accent) }
                 if !loading, results.isEmpty, errorMessage == nil {
-                    EmptyState(icon: "rectangle.on.rectangle", title: favoritesMode ? "收藏你的心动" : "没有找到匹配卡片", subtitle: "换个关键词，或调整筛选条件。")
+                    EmptyState(icon: "rectangle.on.rectangle", title: favoritesMode && store.savedCards.isEmpty ? "暂无收藏" : "未找到卡牌", subtitle: favoritesMode && store.savedCards.isEmpty ? "在卡牌列表或详情中点击收藏按钮，添加喜欢的卡牌。" : "换个关键词，或调整筛选条件。")
                 }
                 if viewMode == .list {
                     LazyVStack(spacing: 12) {
@@ -165,14 +161,14 @@ struct CardBrowserScreen: View {
                     }
                 }
                 if favoritesMode {
-                    HStack { GlassBackButton(); Text("我的收藏").font(.title2.bold()); Spacer(); filterButton }
+
                 }
                 if !favoritesMode || !keyword.isEmpty {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 9) {
                             if !keyword.isEmpty { keywordChip }
                             if !favoritesMode {
-                            quickFilter("所有", type: 0)
+                            quickFilter("全部", type: 0)
                             quickFilter("怪兽", type: 1)
                             quickFilter("魔法", type: 2)
                             quickFilter("陷阱", type: 4)
@@ -182,12 +178,12 @@ struct CardBrowserScreen: View {
                     }
                 }
                 HStack {
-                    Text("\(count.formatted()) 张卡片").font(.system(size: 18, weight: .semibold)).foregroundStyle(Design.ink)
+                    Text("\(count.formatted()) 张卡牌").font(.system(size: 18, weight: .semibold)).foregroundStyle(Design.ink)
                         .accessibilityIdentifier("cards.result.count")
                         .accessibilityValue("已显示 \(results.count) 张")
                     Spacer()
                     viewModeButton
-                    if !favoritesMode { filterButton }
+                    filterButton
                     Menu {
                         Picker("排序依据", selection: $filter.sort) {
                             ForEach(CardSort.allCases) { Text($0.rawValue).tag($0) }
@@ -197,17 +193,18 @@ struct CardBrowserScreen: View {
                             Text("升序").tag(true);Text("降序").tag(false)
                         }
                     } label: {
-                        Label(filter.sort.rawValue, systemImage: filter.sortAscending ? "arrow.up":"arrow.down")
+                        Label(filter.sort.rawValue, systemImage: filter.sortAscending ? "arrow.up":"arrow.down").frame(minHeight:44)
                             .font(.system(size: 11, weight: .medium)).foregroundStyle(Design.secondary)
-                    }.accessibilityLabel("卡片排序").accessibilityValue("\(filter.sort.rawValue) · \(filter.sortAscending ? "升序":"降序")").accessibilityIdentifier("cards.sort")
+                    }.accessibilityLabel("卡牌排序").accessibilityValue("\(filter.sort.rawValue) · \(filter.sortAscending ? "升序":"降序")").accessibilityIdentifier("cards.sort")
                 }
             }.padding(.horizontal, 22).padding(.top, favoritesMode ? 24 : 0).padding(.bottom, 16)
     }
     private var searchableBody: some View {
         NavigationStack {
             browserContents
-            .navigationTitle(selectionTitle == nil ? (favoritesMode ? "":"查找") : "")
+            .navigationTitle(selectionTitle == nil ? (favoritesMode ? "我的收藏":"查找") : "")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {if favoritesMode {ToolbarItem(placement:.cancellationAction){ModalCloseButton().accessibilityIdentifier("navigation.back")}}}
             .searchable(text:$draftKeyword,placement:.navigationBarDrawer(displayMode:.always),prompt:"卡牌名或效果文本")
             .stableSearchToolbar()
             .onSubmit(of:.search) { submitSearch() }
@@ -258,7 +255,7 @@ struct CardBrowserScreen: View {
         if #available(iOS 26.0,*) {
             Button { viewMode = viewMode == .list ? .artwork:.list } label:{viewModeLabel}
                 .buttonStyle(.glass).buttonBorderShape(.circle).controlSize(.small)
-                .accessibilityLabel("切换卡片视图").accessibilityValue(viewMode == .list ? "列表":"卡图")
+                .accessibilityLabel("切换卡牌视图").accessibilityValue(viewMode == .list ? "列表":"卡图")
                 .accessibilityIdentifier("cards.view.toggle")
         } else { legacyViewModeButton }
         #else
@@ -266,11 +263,11 @@ struct CardBrowserScreen: View {
         #endif
     }
     private var viewModeLabel:some View {
-        Image(systemName:viewMode == .list ? "square.grid.2x2":"list.bullet").frame(width:32,height:32)
+        Image(systemName:viewMode == .list ? "square.grid.2x2":"list.bullet").frame(width:34,height:34)
     }
     private var legacyViewModeButton:some View {
         Button { viewMode = viewMode == .list ? .artwork:.list } label:{viewModeLabel.background(Design.surface,in:Circle())}
-            .buttonStyle(.plain).accessibilityLabel("切换卡片视图").accessibilityValue(viewMode == .list ? "列表":"卡图")
+            .buttonStyle(.plain).accessibilityLabel("切换卡牌视图").accessibilityValue(viewMode == .list ? "列表":"卡图")
             .accessibilityIdentifier("cards.view.toggle")
     }
     @ViewBuilder private var filterButton: some View {
@@ -278,7 +275,7 @@ struct CardBrowserScreen: View {
         if #available(iOS 26.0,*) {
             Button { showingFilters=true } label:{filterLabel}
                 .buttonStyle(.glass).buttonBorderShape(.capsule).controlSize(.small)
-                .accessibilityLabel("筛选卡片").accessibilityValue(filter.activeCount>0 ? "已应用 \(filter.activeCount) 个条件":"没有附加条件").accessibilityIdentifier("cards.filters")
+                .accessibilityLabel("筛选卡牌").accessibilityValue(filter.activeCount>0 ? "已应用 \(filter.activeCount) 个条件":"没有附加条件").accessibilityIdentifier("cards.filters")
         } else { legacyFilterButton }
         #else
         legacyFilterButton
@@ -288,23 +285,28 @@ struct CardBrowserScreen: View {
         HStack(spacing:5) {
             Image(systemName:"line.3.horizontal.decrease")
             if filter.activeCount>0 { Text("\(filter.activeCount)").font(.caption.bold()) }
-        }.frame(minWidth:32,minHeight:32)
+        }.frame(minWidth:34,minHeight:34)
     }
     private var legacyFilterButton:some View {
         Button { showingFilters=true } label:{filterLabel.padding(.horizontal,8).background(Design.surface,in:Capsule())}
-            .buttonStyle(.plain).accessibilityLabel("筛选卡片").accessibilityValue(filter.activeCount>0 ? "已应用 \(filter.activeCount) 个条件":"没有附加条件").accessibilityIdentifier("cards.filters")
+            .buttonStyle(.plain).accessibilityLabel("筛选卡牌").accessibilityValue(filter.activeCount>0 ? "已应用 \(filter.activeCount) 个条件":"没有附加条件").accessibilityIdentifier("cards.filters")
     }
-    private func quickFilter(_ title: String, type: Int64, favorites: Bool = false) -> some View {
-        let selected = filter.baseType == type && filter.favoritesOnly == favorites
-        let color=categoryColor(type:type,favorites:favorites)
-        return Button { applyQuickCategory(type:type,favorites:favorites) } label: {
-            Text(title).font(.system(size:12,weight:.semibold)).foregroundStyle(selected ? .white:color)
-                .padding(.horizontal,18).padding(.vertical,11).background(selected ? color:color.opacity(0.13),in:Capsule())
-        }.buttonStyle(.plain).accessibilityIdentifier("cards.quick.\(favorites ? "favorites":String(type))").accessibilityAddTraits(selected ? .isSelected : [])
-    }
-    private func categoryColor(type:Int64,favorites:Bool)->Color {
-        if favorites{return Design.accent}
-        switch type { case CardVocabulary.monster:return Color(hex:0xC66A38);case CardVocabulary.spell:return Color(hex:0x2E8B78);case CardVocabulary.trap:return Color(hex:0x8A5AA8);default:return Color(hex:0x60718E) }
+    private func quickFilter(_ title:String,type:Int64,favorites:Bool=false)->some View {
+        let selected=filter.baseType == type && filter.favoritesOnly == favorites
+        let color:Color
+        if favorites { color = Design.accent } else {
+            color = switch type {
+            case CardVocabulary.monster: Color(hex:0xC66A38)
+            case CardVocabulary.spell: Color(hex:0x2E8B78)
+            case CardVocabulary.trap: Color(hex:0x8A5AA8)
+            default: Color.gray
+            }
+        }
+        return Button {applyQuickCategory(type:type,favorites:favorites)} label:{
+            MatchCategoryPill(kind:MatchKind(id:favorites ? -1 : Int(type),title:title),selected:selected,color:color)
+                .frame(minHeight:44).contentShape(Capsule())
+        }.buttonStyle(.plain).accessibilityIdentifier("cards.quick.\(favorites ? "favorites":String(type))")
+            .accessibilityAddTraits(selected ? .isSelected:[])
     }
     private func applyQuickCategory(type:Int64,favorites:Bool) {
         filter.baseType=type;filter.favoritesOnly=favorites
@@ -452,6 +454,8 @@ struct CardFilterSheet: View {
     @State private var draft: CardFilter
     @State private var error: String?
     @State private var availableRarities: [String] = []
+    @State private var confirmingDiscard = false
+    private var hasChanges: Bool { draft != filter }
     @Environment(CardCatalog.self) private var catalog
     @Environment(\.dismiss) private var dismiss
     init(filter: Binding<CardFilter>, favoritesMode: Bool = false) {
@@ -475,23 +479,28 @@ struct CardFilterSheet: View {
             }.navigationTitle("筛选").navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement:.cancellationAction) {
-                        Button { dismiss() } label: { Image(systemName:"xmark") }
+                        ModalCloseButton(action: requestDismiss)
                             .accessibilityLabel("取消").accessibilityIdentifier("cards.filters.cancel")
                     }
                     ToolbarItemGroup(placement:.confirmationAction) {
-                        Button(role:.destructive) { reset() } label: { Image(systemName:"arrow.counterclockwise") }
-                            .accessibilityLabel("重置所有条件").accessibilityIdentifier("cards.filters.reset")
-                        Button { apply() } label: { Image(systemName:"checkmark") }
+                        Button { reset() } label: { Image(systemName:"arrow.counterclockwise").frame(minWidth:44,minHeight:44) }
+                            .accessibilityLabel("重置筛选").accessibilityIdentifier("cards.filters.reset")
+                        Button { apply() } label: {Text("应用").foregroundStyle(.white)}.primaryActionStyle()
                             .accessibilityLabel("应用筛选").accessibilityIdentifier("cards.filters.apply")
                     }
                 }
-        }.background(Design.canvas).presentationDragIndicator(.visible).presentationCornerRadius(32)
+        }.background(Design.canvas).presentationDragIndicator(.visible)
+            .interactiveDismissDisabled(hasChanges)
+            .alert("放弃本次修改？",isPresented:$confirmingDiscard) {
+                Button("放弃修改",role:.destructive) {dismiss()}
+                Button("继续编辑",role:.cancel) {}
+            } message: {Text("本次修改尚未应用。")}
             .alert("筛选条件有误",isPresented:Binding(get:{error != nil},set:{if !$0{error=nil}})) { Button("好",role:.cancel){} } message:{Text(error ?? "")}
             .task { availableRarities = (try? await catalog.database.availableRarities()) ?? [] }
     }
     private var banlistSection:some View {
-        Section("禁限规则") {
-            Picker("禁卡表",selection:$draft.format) {
+        Section("禁限卡表") {
+            Picker("禁限卡表",selection:$draft.format) {
                 ForEach(CardFormat.allCases) { Text($0.title).tag($0) }
             }.pickerStyle(.menu).accessibilityIdentifier("cards.filter.banlist.format")
             LazyVGrid(columns:[GridItem(.adaptive(minimum:82),spacing:8)],spacing:8) {
@@ -506,7 +515,7 @@ struct CardFilterSheet: View {
     }
     private var spellSection:some View {
         Section("魔法") {
-            LazyVGrid(columns:[GridItem(.adaptive(minimum:76),spacing:8)],spacing:8) {
+            LazyVGrid(columns:[GridItem(.adaptive(minimum:88),spacing:8)],spacing:8) {
                 ForEach(CardVocabulary.spellKinds) { option in
                     if option.id == 0 {
                         choice(option.title,selected:draft.includesNormalSpell,color:Design.accent,identifier:"cards.filter.spell.normal") { draft.includesNormalSpell.toggle() }
@@ -519,7 +528,7 @@ struct CardFilterSheet: View {
     }
     private var trapSection:some View {
         Section("陷阱") {
-            LazyVGrid(columns:[GridItem(.adaptive(minimum:76),spacing:8)],spacing:8) {
+            LazyVGrid(columns:[GridItem(.adaptive(minimum:88),spacing:8)],spacing:8) {
                 ForEach(CardVocabulary.trapKinds) { option in
                     if option.id == 0 {
                         choice(option.title,selected:draft.includesNormalTrap,color:Design.accent,identifier:"cards.filter.trap.normal") { draft.includesNormalTrap.toggle() }
@@ -546,7 +555,7 @@ struct CardFilterSheet: View {
     }
     private func valueSection(_ title:String,values:ClosedRange<Int>,selection:Binding<Int64>,color:Color,prefix:String)->some View {
         Section(title) {
-            LazyVGrid(columns:[GridItem(.adaptive(minimum:48),spacing:8)],spacing:8) {
+            LazyVGrid(columns:[GridItem(.adaptive(minimum:64),spacing:8)],spacing:8) {
                 ForEach(Array(values),id:\.self) { value in
                     flagChoice(String(value),flag:Int64(1)<<value,selection:selection,color:color,identifier:"cards.filter.\(prefix).\(value)")
                 }
@@ -555,7 +564,7 @@ struct CardFilterSheet: View {
     }
     private var linkSection:some View {
         Section("连接") {
-            LazyVGrid(columns:[GridItem(.adaptive(minimum:48),spacing:8)],spacing:8) {
+            LazyVGrid(columns:[GridItem(.adaptive(minimum:64),spacing:8)],spacing:8) {
                 ForEach(1...6,id:\.self) { value in
                     flagChoice(String(value),flag:Int64(1)<<value,selection:$draft.selectedLinkRatings,color:Design.accent,identifier:"cards.filter.link.value.\(value)")
                 }
@@ -605,7 +614,7 @@ struct CardFilterSheet: View {
         return "已选择 \(draft.rarities.count) 种"
     }
     private func chipGrid(_ options:[CardOption],selection:Binding<Int64>,prefix:String)->some View {
-        LazyVGrid(columns:[GridItem(.adaptive(minimum:76),spacing:8)],spacing:8) {
+        LazyVGrid(columns:[GridItem(.adaptive(minimum:88),spacing:8)],spacing:8) {
             ForEach(options) { option in
                 flagChoice(option.title,flag:option.id,selection:selection,color:Design.accent,identifier:"cards.filter.\(prefix).\(option.id)")
             }
@@ -626,18 +635,19 @@ struct CardFilterSheet: View {
             HStack(spacing:5) {
                 if included { Image(systemName:"checkmark").font(.caption.bold()) }
                 else if excluded { Image(systemName:"xmark").font(.caption.bold()) }
-                Text(option.title).font(.caption.weight(.semibold))
-            }.foregroundStyle(included ? .white:excluded ? Color.red:Design.secondary).frame(maxWidth:.infinity,minHeight:44)
-                .background(included ? Design.accent:excluded ? Color.red.opacity(0.12):Color(uiColor:.tertiarySystemFill),in:Capsule())
-                .overlay(Capsule().strokeBorder(excluded ? Color.red:Color.clear,lineWidth:1))
-        }.buttonStyle(.plain).accessibilityIdentifier("cards.filter.type.\(option.id)")
+                Text(option.title).font(.caption.weight(.semibold)).lineLimit(1).minimumScaleFactor(0.8)
+            }.frame(maxWidth:.infinity,minHeight:28)
+        }.selectionActionStyle(included,controlSize:.regular,tint:excluded ? .red:nil)
+            .frame(minHeight:44).accessibilityIdentifier("cards.filter.type.\(option.id)")
             .accessibilityValue(included ? "包含":excluded ? "排除":"未选择").accessibilityAddTraits(included || excluded ? .isSelected:[])
     }
     private func choice(_ title:String,selected:Bool,color:Color,identifier:String,action:@escaping()->Void)->some View {
-        Button(action:action){Text(title).font(.caption.weight(.semibold)).foregroundStyle(selected ? .white:Design.secondary).frame(maxWidth:.infinity,minHeight:44).background(selected ? color:Color(uiColor:.tertiarySystemFill),in:Capsule())}
-            .buttonStyle(.plain).accessibilityIdentifier(identifier).accessibilityAddTraits(selected ? .isSelected:[])
+        Button(action:action) {Text(title).font(.caption.weight(.semibold)).lineLimit(1).minimumScaleFactor(0.8).frame(maxWidth:.infinity,minHeight:28)}
+            .selectionActionStyle(selected,controlSize:.regular).frame(minHeight:44).accessibilityIdentifier(identifier)
+            .accessibilityAddTraits(selected ? .isSelected:[])
     }
-    private func reset(){let type=draft.baseType,sort=draft.sort,ascending=draft.sortAscending,format=draft.format,favorites=draft.favoritesOnly;draft=CardFilter();draft.baseType=type;draft.sort=sort;draft.sortAscending=ascending;draft.format=format;draft.favoritesOnly=favoritesMode || favorites}
+    private func requestDismiss() { if hasChanges {confirmingDiscard=true} else {dismiss()} }
+    private func reset(){let type=draft.baseType,sort=draft.sort,ascending=draft.sortAscending,favorites=draft.favoritesOnly;draft=CardFilter();draft.baseType=type;draft.sort=sort;draft.sortAscending=ascending;draft.format=catalog.selectedFormat;draft.favoritesOnly=favoritesMode || favorites}
     private func apply(){do{try draft.validate();filter=draft;dismiss()}catch{self.error=error.localizedDescription}}
     private func dateBinding(_ keyPath:WritableKeyPath<CardFilter,String>,fallback:Date)->Binding<Date> {
         Binding(get:{Self.dayFormatter.date(from:draft[keyPath:keyPath]) ?? fallback},set:{draft[keyPath:keyPath]=Self.dayFormatter.string(from:$0)})
@@ -835,6 +845,41 @@ struct NeuronLinkMarkers:View {
                     }
                 }
             }
+        }
+    }
+}
+
+
+@MainActor private struct NativeDeckSearchBar: UIViewRepresentable {
+    @Binding var text: String
+    var submit: () -> Void
+    func makeUIView(context:Context) -> UISearchBar {
+        let bar=UISearchBar()
+        bar.searchBarStyle = .minimal
+        bar.placeholder="卡牌名或效果文本"
+        bar.autocorrectionType = .no
+        bar.delegate=context.coordinator
+        bar.searchTextField.accessibilityIdentifier="deck.search.field"
+        bar.searchTextField.textDropDelegate=context.coordinator
+        return bar
+    }
+    func updateUIView(_ bar:UISearchBar,context:Context) {
+        context.coordinator.parent=self
+        if bar.text != text {bar.text=text}
+    }
+    func makeCoordinator() -> Coordinator {Coordinator(parent:self)}
+    final class Coordinator: NSObject, UISearchBarDelegate, UITextDropDelegate {
+        var parent:NativeDeckSearchBar
+        init(parent:NativeDeckSearchBar) {self.parent=parent}
+        func searchBar(_ searchBar:UISearchBar,textDidChange searchText:String) {
+            parent.text=searchText
+            if searchText.isEmpty {parent.submit()}
+        }
+        func searchBarSearchButtonClicked(_ searchBar:UISearchBar) {
+            searchBar.resignFirstResponder();parent.submit()
+        }
+        func textDroppableView(_ textDroppableView: UIView & UITextDroppable,proposalForDrop drop:UITextDropRequest) -> UITextDropProposal {
+            UITextDropProposal(operation:.cancel)
         }
     }
 }

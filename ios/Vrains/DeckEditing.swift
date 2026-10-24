@@ -62,6 +62,7 @@ struct DeckEditState: Equatable {
 @Observable @MainActor
 final class DeckEditingSession {
     private(set) var state: DeckEditState
+    private let initialState: DeckEditState
     private var past: [DeckEditState] = []
     private var future: [DeckEditState] = []
     let format:CardFormat
@@ -71,7 +72,8 @@ final class DeckEditingSession {
     private var ruleRevision:Int?
     var zone = DeckZone.main
     var error: String?
-    init(deck: Deck,format:CardFormat = .ocg) { state = DeckEditState(deck);self.format=deck.banlist.flatMap(CardFormat.init(rawValue:)) ?? format;legacyUnrecorded=deck.mainCardCIDs == nil && deck.mainCardArtworks == nil && deck.cards>0 }
+    init(deck: Deck,format:CardFormat = .ocg) { let initial = DeckEditState(deck);state = initial;initialState=initial;self.format=deck.banlist.flatMap(CardFormat.init(rawValue:)) ?? format;legacyUnrecorded=deck.mainCardCIDs == nil && deck.mainCardArtworks == nil && deck.cards>0 }
+    var hasChanges: Bool { state != initialState }
     var legalityIssues:[DeckLegalityIssue] {
         DeckLegality.issues(state:state,format:format,details:ruleDetails,checked:checkedRules,legacyUnrecorded:legacyUnrecorded)
     }
@@ -180,10 +182,10 @@ struct DeckLegalityIssue:Identifiable,Equatable {
             if message.hasPrefix("准限制卡") {return "准限制卡数量"}
             return "同名卡数量"
         }
-        if id.hasPrefix("placement.") {return "卡片区域"}
-        if id.hasPrefix("release:") {return "未发售卡片"}
-        if id.hasPrefix("token:") {return "衍生物卡片"}
-        return "卡片资料"
+        if id.hasPrefix("placement.") {return "卡牌区域"}
+        if id.hasPrefix("release:") {return "未发售卡牌"}
+        if id.hasPrefix("token:") {return "衍生物卡牌"}
+        return "卡牌资料"
     }
 }
 
@@ -202,8 +204,8 @@ enum DeckLegality {
         for cid in counts.keys.sorted() {
             let copies=counts[cid]!
             guard let info=details[cid] else {
-                if copies>3 {result.append(.init(id:"copies:\(cid)",message:"卡片 \(cid) 的各异画合计 \(copies) 张，最多投入 3 张。"))}
-                if checked.contains(cid) {result.append(.init(id:"unknown:\(cid)",message:"卡片 \(cid) 的资料暂不可用，无法确认是否合法。"))}
+                if copies>3 {result.append(.init(id:"copies:\(cid)",message:"卡牌 \(cid) 的各异画合计 \(copies) 张，最多投入 3 张。"))}
+                if checked.contains(cid) {result.append(.init(id:"unknown:\(cid)",message:"卡牌 \(cid) 的资料暂不可用，无法确认是否合法。"))}
                 continue
             }
             let name=info.card.name

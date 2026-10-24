@@ -41,12 +41,12 @@ struct DeckLibraryScreen: View {
                                     VStack(alignment:.leading,spacing:0) {
                                         Text(deck.name).font(.headline).foregroundStyle(Design.ink).lineLimit(2)
                                         Spacer(minLength:8)
-                                        Text("修改于 \(deck.modifiedAt.formatted(date:.abbreviated,time:.omitted))").font(.caption).foregroundStyle(Design.secondary)
+                                        Text("修改于 \(Design.dateText(deck.modifiedAt))").font(.caption).foregroundStyle(Design.secondary)
                                     }.frame(maxWidth:.infinity,alignment:.leading).frame(height:76,alignment:.top)
                                 }.contentShape(Rectangle())
                             }.buttonStyle(.plain).accessibilityIdentifier("decks.confirm.\(deck.id)")
                             if !rearranging {
-                                Menu { rowActions(deck) } label: { Image(systemName:"ellipsis").frame(width:36,height:44) }
+                                Menu { rowActions(deck) } label: { Image(systemName:"ellipsis").frame(width:44,height:44) }
                                     .accessibilityLabel("\(deck.name)选项").accessibilityIdentifier("decks.menu.\(deck.id)")
                             }
                         }.padding(.vertical,6)
@@ -66,16 +66,21 @@ struct DeckLibraryScreen: View {
                             Button { grid=false } label:{ Label("列表",systemImage:!grid ? "checkmark":"list.bullet") }
                         }
                         Section {
-                            Button { select(.name) } label:{ Label(sort == .name ? "名称 \(ascending ? "A–Z":"Z–A")" : "名称 A–Z",systemImage:sort == .name ? (ascending ? "arrow.up":"arrow.down") : "textformat.abc") }
-                                .accessibilityIdentifier("decks.sort.name")
-                            Button { select(.updated) } label:{ Label(sort == .updated ? "更新时间 · \(ascending ? "最早优先":"最新优先")" : "更新时间",systemImage:sort == .updated ? (ascending ? "arrow.up":"arrow.down") : "clock") }
-                                .accessibilityIdentifier("decks.sort.updated")
+                            Picker("排序依据", selection: $sortKey) {
+                                Text("名称").tag(DeckLibrarySort.name.rawValue).accessibilityIdentifier("decks.sort.name")
+                                Text("更新时间").tag(DeckLibrarySort.updated.rawValue).accessibilityIdentifier("decks.sort.updated")
+                            }
+                            Picker("顺序", selection: $ascending) {
+                                Text("升序").tag(true)
+                                Text("降序").tag(false)
+                            }.disabled(sort == .custom)
                             Button { sortKey=DeckLibrarySort.custom.rawValue;grid=false;rearranging=true } label:{ Label("自定义排序",systemImage:"arrow.up.arrow.down") }
                                 .accessibilityIdentifier("decks.sort.custom")
                         }
                     } label:{ Image(systemName:"ellipsis") }.accessibilityLabel("卡组显示与排序").accessibilityIdentifier("decks.options")
                 }
             }
+            .onChange(of: sortKey) { _, value in if value != DeckLibrarySort.custom.rawValue { rearranging=false } }
             .safeAreaInset(edge:.bottom) {
                 if rearranging {
                     HStack { Text("拖动卡组右侧调整顺序").font(.subheadline); Spacer(); Button("完成") { rearranging=false }.fontWeight(.semibold) }
@@ -91,10 +96,6 @@ struct DeckLibraryScreen: View {
                 Button("删除",role:.destructive) { if let deleting { store.deleteDeck(id:deleting.id) };deleting=nil }
                 Button("取消",role:.cancel) { deleting=nil }
             } message:{Text("此操作会从本机删除“\(deleting?.name ?? "")”。")}
-    }
-    private func select(_ option: DeckLibrarySort) {
-        ascending = sort == option ? !ascending : option == .name
-        sortKey = option.rawValue;rearranging=false
     }
     @ViewBuilder private func rowActions(_ deck:Deck)->some View {
         Button { editorID=deck.id } label:{Label("编辑",systemImage:"pencil")}
@@ -237,7 +238,7 @@ struct DeckConfirmationScreen: View {
                     section("副卡组",cards:deck.sideArtworks)
                     HStack(spacing:12) {
                         Button { draw.start(cards:deck.mainArtworks) } label:{Label("模拟起手",systemImage:"hand.draw.fill").frame(maxWidth:.infinity,minHeight:50)}
-                            .buttonStyle(.borderedProminent).tint(Design.accent).buttonBorderShape(.capsule).disabled(deck.mainArtworks.isEmpty)
+                            .primaryActionStyle().disabled(deck.mainArtworks.isEmpty)
                             .accessibilityIdentifier("deck.draw.start")
                         Button { draw.drawOne() } label:{Text("+1").font(.title3.weight(.semibold)).frame(width:72,height:50)}
                             .buttonStyle(.bordered).buttonBorderShape(.capsule).disabled(draw.remaining.isEmpty).accessibilityLabel("再抽一张")
@@ -261,7 +262,7 @@ struct DeckConfirmationScreen: View {
                             Divider()
                             Button { editing=true } label:{Label("编辑",systemImage:"pencil")}.accessibilityIdentifier("deck.confirm.edit")
                             Button { let copy=store.duplicateDeck(deck);exportMessage="已复制为“\(copy.name)”。" } label:{Label("复制",systemImage:"doc.on.doc")}
-                            Button { selectingBanlist=true } label:{Label("禁卡表",systemImage:"exclamationmark.shield")}
+                            Button { selectingBanlist=true } label:{Label("禁限卡表",systemImage:"exclamationmark.shield")}
                             Button(role:.destructive) { deleting=true } label:{Label("删除",systemImage:"trash")}
                         } label:{Image(systemName:"ellipsis")}.accessibilityLabel("卡组选项").accessibilityIdentifier("deck.confirm.options")
                     }
@@ -274,7 +275,7 @@ struct DeckConfirmationScreen: View {
                 NavigationStack {
                     List(CardFormat.allCases) { option in
                         Button { if var value=deck { value.banlist=option.rawValue;store.saveDeck(value) };selectingBanlist=false } label:{HStack{Text(option.title);Spacer();if option==format{Image(systemName:"checkmark")}}}
-                    }.navigationTitle("禁卡表").navigationBarTitleDisplayMode(.inline)
+                    }.navigationTitle("禁限卡表").navigationBarTitleDisplayMode(.inline)
                 }.presentationDetents([.medium])
             }
             .fileExporter(isPresented:$exporting,document:deck.map(DeckExportDocument.init),contentType:.json,defaultFilename:deck?.name ?? "卡组") { result in
@@ -289,7 +290,7 @@ struct DeckConfirmationScreen: View {
         VStack(alignment:.leading,spacing:14) {
             HStack { Text(title).font(.headline);Spacer();Text("\(legacy ?? cards.count)").font(.subheadline.monospacedDigit()).foregroundStyle(Design.secondary) }
             if cards.isEmpty {
-                Text(legacy == nil ? "暂无卡片":"旧版卡组尚未录入逐张清单").font(.caption).foregroundStyle(Design.secondary).frame(maxWidth:.infinity,minHeight:42)
+                Text(legacy == nil ? "暂无卡牌":"旧版卡组尚未录入逐张清单").font(.caption).foregroundStyle(Design.secondary).frame(maxWidth:.infinity,minHeight:42)
             } else {
                 LazyVGrid(columns:Array(repeating:GridItem(.flexible(),spacing:7),count:5),spacing:11) {
                     ForEach(Array(cards.enumerated()),id:\.offset) { _,artwork in
@@ -313,40 +314,51 @@ struct DeckEditorScreen: View {
     @State private var selected:DeckDetailRoute?
     @State private var drag=DeckDragState()
     @State private var coverPosition:String?
+    @State private var confirmingDiscard = false
     var body:some View {
+        NavigationStack {
         Group {
             if let session {
                 CardBrowserScreen(embedded:true,editorHeader:AnyView(editorHeader(session)),editorWorkspace:AnyView(editorWorkspace(session)),artworkFormat:session.format,deckSession:session,deckDrag:drag) { card in
                     selected=DeckDetailRoute(card:card,artwork:DeckCard(cid:card.cid))
-                }.safeAreaInset(edge:.top,spacing:0) {toolbar(session)}
+                }
             } else { ProgressView() }
         }.background(Design.canvas)
+            .navigationTitle(draft == nil ? "编辑卡组" : "创建卡组").navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    ModalCloseButton(action: requestDismiss).accessibilityLabel("取消编辑").accessibilityIdentifier("deck.edit.cancel")
+                }
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    if let session, session.canUndo || session.canRedo {
+                        Button { session.undo() } label: { Image(systemName:"arrow.uturn.backward").frame(minWidth:44,minHeight:44) }
+                            .disabled(!session.canUndo).accessibilityLabel("撤销").accessibilityIdentifier("deck.edit.undo")
+                        Button { session.redo() } label: { Image(systemName:"arrow.uturn.forward").frame(minWidth:44,minHeight:44) }
+                            .disabled(!session.canRedo).accessibilityLabel("重做").accessibilityIdentifier("deck.edit.redo")
+                    }
+                    Button {
+                        if let original, let session {store.saveDeck(session.state.applying(to:original))};dismiss()
+                    } label: {Text(draft == nil ? "保存" : "创建").foregroundStyle(.white)}.primaryActionStyle()
+                        .disabled(session?.state.name.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty != false)
+                        .accessibilityLabel(draft == nil ? "保存卡组" : "确认创建").accessibilityIdentifier("deck.edit.save")
+                }
+            }
             .task(id:deckID) { if session == nil, let deck=draft ?? store.decks.first(where:{$0.id == deckID}) {original=deck;session=DeckEditingSession(deck:deck,format:catalog.selectedFormat)} }
             .task(id:DeckValidationRequest(cards:Array(Set(session?.state.all.map(\.cid) ?? [])).sorted(),revision:catalog.revision)) {
                 await session?.refreshLegality(database:catalog.database,revision:catalog.revision)
             }
             .sheet(item:$selected) { item in CatalogCardDetailScreen(card:item.card,deckEditor:session,initialArtwork:item.artwork.ciid) }
-            .alert("无法添加卡片",isPresented:Binding(get:{session?.error != nil},set:{if !$0{session?.error=nil}})) {Button("好",role:.cancel){session?.error=nil}} message:{Text(session?.error ?? "")}
-            .presentationDragIndicator(.visible).presentationCornerRadius(32).presentationDetents([.large])
+            .alert("无法添加卡牌",isPresented:Binding(get:{session?.error != nil},set:{if !$0{session?.error=nil}})) {Button("好",role:.cancel){session?.error=nil}} message:{Text(session?.error ?? "")}
+            .interactiveDismissDisabled(session?.hasChanges == true)
+            .alert("放弃本次修改？",isPresented:$confirmingDiscard) {
+                Button("放弃修改",role:.destructive) {dismiss()}
+                Button("继续编辑",role:.cancel) {}
+            } message: {Text("本次修改尚未保存。")}
+            .presentationDragIndicator(.visible).presentationDetents([.large])
+        }
     }
-    private func toolbar(_ session:DeckEditingSession)->some View {
-        HStack(spacing:12) {
-            Button {dismiss()} label:{Image(systemName:"xmark").font(.system(size:21,weight:.semibold)).foregroundStyle(Design.ink).frame(width:48,height:48).prototypeGlass(cornerRadius:24)}
-                .buttonStyle(.plain).accessibilityLabel("取消编辑").accessibilityIdentifier("deck.edit.cancel")
-            Spacer()
-            if session.canUndo || session.canRedo {
-                HStack(spacing:0) {
-                    Button {session.undo()} label:{Image(systemName:"arrow.uturn.backward").frame(width:44,height:44)}.disabled(!session.canUndo).accessibilityLabel("撤销").accessibilityIdentifier("deck.edit.undo")
-                    Button {session.redo()} label:{Image(systemName:"arrow.uturn.forward").frame(width:44,height:44)}.disabled(!session.canRedo).accessibilityLabel("重做").accessibilityIdentifier("deck.edit.redo")
-                }.prototypeGlass(cornerRadius:24)
-            }
-            Button {
-                if let original {store.saveDeck(session.state.applying(to:original))};dismiss()
-            } label:{Image(systemName:"checkmark").font(.system(size:21,weight:.semibold)).foregroundStyle(.white).frame(width:48,height:48).background(Design.accent,in:Circle())}
-                .buttonStyle(.plain).disabled(session.state.name.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty)
-                .accessibilityLabel(draft == nil ? "保存卡组":"确认创建").accessibilityIdentifier("deck.edit.save")
-        }.padding(.horizontal,18).padding(.vertical,12).background {Design.canvas.ignoresSafeArea(edges:.top)}
-            .accessibilityElement(children:.contain).accessibilityIdentifier("deck.edit.toolbar")
+    private func requestDismiss() {
+        if session?.hasChanges == true {confirmingDiscard=true} else {dismiss()}
     }
     private func editorHeader(_ session:DeckEditingSession)->some View {
         VStack(spacing:24) {
@@ -367,12 +379,12 @@ struct DeckEditorScreen: View {
                     ForEach(DeckZone.allCases) {zone in Text("\(zone.rawValue) \(session.state[zone].count)").tag(zone)}
                 }.pickerStyle(.segmented).accessibilityIdentifier("deck.edit.zones")
                 if session.state[session.zone].isEmpty {
-                    Text("从下方查找卡片，点击卡片后使用 + 加入卡组。").font(.subheadline).foregroundStyle(Design.secondary).frame(maxWidth:.infinity,minHeight:120)
+                    Text("从下方查找卡牌，点击卡牌后使用 + 加入卡组。").font(.subheadline).foregroundStyle(Design.secondary).frame(maxWidth:.infinity,minHeight:120)
                 } else {
                     ScrollView(.horizontal,showsIndicators:false) {
                         HStack(spacing:12) {
                             ForEach(session.groups(in:session.zone)) { artwork in
-                                DeckDraggableCard(content:AnyView(DeckCardArtwork(artwork:artwork,quantity:session.state[session.zone].filter{$0==artwork}.count,indicators:true,format:session.format).environment(catalog).environment(store)),source:.deck(artwork,session.zone),drag:drag,identifier:"deck.edit.card.\(artwork.id)",label:"卡片 \(artwork.cid)，异画 \(artwork.ciid)，投入 \(session.state[session.zone].filter{$0==artwork}.count) 张",insertSearch:{target in if let target {session.move(artwork,before:target,in:session.zone)} else {session.moveToEnd(artwork,in:session.zone)}},removeDeck:{_ = session.removeArtwork(artwork,in:session.zone)},open:{open(artwork)})
+                                DeckDraggableCard(content:AnyView(DeckCardArtwork(artwork:artwork,quantity:session.state[session.zone].filter{$0==artwork}.count,indicators:true,format:session.format).environment(catalog).environment(store)),source:.deck(artwork,session.zone),drag:drag,identifier:"deck.edit.card.\(artwork.id)",label:"卡牌 \(artwork.cid)，异画 \(artwork.ciid)，投入 \(session.state[session.zone].filter{$0==artwork}.count) 张",insertSearch:{target in if let target {session.move(artwork,before:target,in:session.zone)} else {session.moveToEnd(artwork,in:session.zone)}},removeDeck:{_ = session.removeArtwork(artwork,in:session.zone)},open:{open(artwork)})
                                     .frame(width:76,height:76/NeuronCardLayout.aspect)
 
                             }
@@ -433,8 +445,8 @@ struct DeckCardQuantityControls:View {
     private var canAdd:Bool {session.total(cid:card.cid)<3 && session.state[session.destination(for:card,side:side)].count<session.destination(for:card,side:side).capacity}
     var body:some View {
         HStack(spacing:14) {
-            Button {session.remove(card,ciid:ciid,side:side)} label:{Image(systemName:"minus").font(.system(size:18,weight:.medium)).frame(width:48,height:48).prototypeGlass(cornerRadius:24)}
-                .buttonStyle(.plain).disabled(copies==0).accessibilityLabel("减少投入").accessibilityIdentifier("deck.card.minus")
+            Button {session.remove(card,ciid:ciid,side:side)} label:{Image(systemName:"minus").font(.system(size:18,weight:.medium)).frame(width:32,height:32)}
+                .buttonStyle(.bordered).buttonBorderShape(.circle).controlSize(.large).disabled(copies==0).accessibilityLabel("减少投入").accessibilityIdentifier("deck.card.minus")
             Button {side.toggle();session.zone=session.destination(for:card,side:side)} label:{
                 HStack(spacing:10) {
                     Image(systemName:"arrow.trianglehead.2.clockwise.rotate.90").font(.system(size:17,weight:.medium))
@@ -442,10 +454,10 @@ struct DeckCardQuantityControls:View {
                         Text(side ? "副卡组":"主卡组").font(.subheadline.weight(.medium))
                         Text("主 \(session.count(cid:card.cid,side:false)) · 副 \(session.count(cid:card.cid,side:true))").font(.caption2.monospacedDigit()).foregroundStyle(Design.secondary)
                     }
-                }.frame(maxWidth:.infinity,minHeight:48).prototypeGlass(cornerRadius:24)
-            }.buttonStyle(.plain).accessibilityIdentifier("deck.card.destination")
-            Button {session.add(card,ciid:ciid,side:side)} label:{Image(systemName:"plus").font(.system(size:18,weight:.medium)).frame(width:48,height:48).prototypeGlass(cornerRadius:24)}
-                .buttonStyle(.plain).disabled(!canAdd).accessibilityLabel("增加投入").accessibilityIdentifier("deck.card.plus")
+                }.frame(maxWidth:.infinity,minHeight:32)
+            }.secondaryActionStyle().accessibilityIdentifier("deck.card.destination")
+            Button {session.add(card,ciid:ciid,side:side)} label:{Image(systemName:"plus").font(.system(size:18,weight:.medium)).frame(width:32,height:32)}
+                .buttonStyle(.bordered).buttonBorderShape(.circle).controlSize(.large).disabled(!canAdd).accessibilityLabel("增加投入").accessibilityIdentifier("deck.card.plus")
         }.foregroundStyle(Design.ink).padding(.horizontal,22).padding(.vertical,10)
     }
 }

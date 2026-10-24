@@ -4,7 +4,7 @@ import Observation
 struct ShopLevel: Identifiable, Hashable, Sendable {
     let id: String
     let title: String
-    static let catalog = [ShopLevel(id: "", title: "所有"), ShopLevel(id: "1", title: "一星公认店"), ShopLevel(id: "0", title: "公认店"), ShopLevel(id: "-1", title: "零售商")]
+    static let catalog = [ShopLevel(id: "", title: "全部"), ShopLevel(id: "1", title: "一星公认店"), ShopLevel(id: "0", title: "公认店"), ShopLevel(id: "-1", title: "零售商")]
     static func merged(_ values: [String: APIValue]) -> [ShopLevel] {
         catalog + values.compactMap { key, value in
             guard !catalog.contains(where: { $0.id == key }), let title = value.text else { return nil }
@@ -147,7 +147,7 @@ struct StoresScreen: View {
                 InfiniteScrollFooter(itemCount: store.items.count, canLoadMore: store.hasMore && store.errorMessage == nil, isLoading: store.isLoading) { await store.loadMore() }
             }
         }
-        .navigationTitle("店铺").navigationBarTitleDisplayMode(.inline)
+        .navigationTitle("店铺").navigationBarTitleDisplayMode(.large)
         .searchable(text: $search, placement: .navigationBarDrawer(displayMode: .always), prompt: "搜索店铺名称或地址")
         .stableSearchToolbar()
         .onSubmit(of: .search) { query.keywords = search.trimmingCharacters(in: .whitespacesAndNewlines) }

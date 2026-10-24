@@ -798,7 +798,7 @@ struct JHSCartItem: Identifiable, Sendable {
                 let invalid=node["cart_status"].int==0 || product<=0 || stock==0
                 guard invalid || price.map({$0>=0})==true else{throw JHSMarketplaceError.invalidData}
                 items.append(JHSCartItem(cartID:Int64(cart),productID:Int64(product),cardID:node["card_id"].int.map(Int64.init),sellerID:seller,
-                    sellerName:shop,name:node["card_name_cn"].text ?? node["name_cn"].text ?? "卡片商品",
+                    sellerName:shop,name:node["card_name_cn"].text ?? node["name_cn"].text ?? "卡牌商品",
                     number:node["card_version_number"].text ?? node["number"].text ?? "",
                     rarity:node["card_version_rarity"].text ?? node["rarity"].text ?? "",quantity:quantity,price:price,stock:stock,isInvalid:invalid,
                     remark:[node["product_remark_only"].text,node["product_remark"].text].compactMap{$0.map(PlainHTML.text)}.first{!$0.isEmpty},
@@ -911,7 +911,7 @@ actor UITestJHSCartClient:JHSCartProviding {
     func cartItems(sellerID:Int64) async throws -> [JHSCartItem] {
         detailRequests+=1
         let normal=removed ? "":"{\"cart_id\":7001,\"product_id\":8001,\"card_id\":139,\"card_name_cn\":\"青眼白龙\",\"card_version_number\":\"TEST-001\",\"card_version_rarity\":\"UR\",\"cart_status\":1,\"quantity\":\(quantity),\"product_price\":10,\"product_quantity\":3,\"product_remark_only\":\"轻微白边\",\"card_version_image\":\"https://example.test/cart-card.jpg\"},"
-        let expired=invalidRemoved ? "":"{\"cart_id\":7002,\"product_id\":8002,\"card_id\":140,\"card_name_cn\":\"失效卡片\",\"product_remark_only\":\"\",\"product_remark\":\"\",\"product_desc\":\"<label data-type=\\\"sub_title\\\">类型：</label>效果怪兽\",\"cart_status\":0,\"quantity\":1,\"product_price\":null,\"product_quantity\":0}"
+        let expired=invalidRemoved ? "":"{\"cart_id\":7002,\"product_id\":8002,\"card_id\":140,\"card_name_cn\":\"失效卡牌\",\"product_remark_only\":\"\",\"product_remark\":\"\",\"product_desc\":\"<label data-type=\\\"sub_title\\\">类型：</label>效果怪兽\",\"cart_status\":0,\"quantity\":1,\"product_price\":null,\"product_quantity\":0}"
         let normalRow=normal.hasSuffix(",") ? String(normal.dropLast()):normal
         return try JHSCartItem.decode(value("["+[normalRow,expired].filter{!$0.isEmpty}.joined(separator:",")+"]"),sellerID:sellerID)
     }

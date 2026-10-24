@@ -159,12 +159,10 @@ struct RankingScreen: View {
                     }
                 } else if !store.isLoading, store.players.isEmpty {
                     ContentUnavailableView("暂无排名", systemImage: "chart.bar", description: Text("此分类或赛季暂无榜单。"))
-                } else if !store.isLoading, !store.hasMore {
-                    Text("已展示全部排名").font(.caption).foregroundStyle(.secondary)
                 }
             } header: {
                 HStack { Text("排名 · 决斗者"); Spacer(); Text("分数") }
-            } footer: { Text("共 \(store.total) 位决斗者；并列名次按榜单原顺序展示。") }
+            } footer: { Text("共 \(store.total) 位决斗者") }
         }
         .navigationTitle("排名").navigationBarTitleDisplayMode(.large)
         .task(id: "\(category.rawValue)-\(season)-\(account.sessionVersion)") { await refresh() }

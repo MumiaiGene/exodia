@@ -32,14 +32,16 @@ struct MatchDetail: Sendable {
     let isFrozen: Bool
     let errorCode: Int
     let backup: Bool
-    init(data: APIValue) throws {
+    init(data: APIValue, state: APIValue? = nil) throws {
         let info = data["info"], basic = info["basic_info"], desc = info["desc_info"]
         guard let id = info["id"].text, let name = basic["name"].text ?? info["Name"].text else { throw APIError.invalidResponse }
         self.id = id; self.name = name
         organizer = basic["customer_name"].text
         address = basic["address"].text.flatMap { $0.isEmpty ? nil : $0 } ?? basic["address_info"].text
         startsAt = basic["start_at"].text
-        typeID = info["Type"].int; statusID = info["Status"].int
+        typeID = info["Type"].int
+        // The state endpoint supplies the page lifecycle; info.Status also includes round phases.
+        statusID = state?["statusid"].int ?? info["Status"].int
         environment = info["Condition"].int.flatMap { $0 == 1 ? "简体中文" : $0 == 2 ? "OCG" : nil }
         rule = desc["rule_display"].text
         rounds = info["Rounds"].int; winning = info["Winning"].int
@@ -52,7 +54,7 @@ struct MatchDetail: Sendable {
         requiresDeck = info["IsDeck"].flag ?? false
         usesQueue = info["is_queue"].flag ?? false
         onlinePayment = info["IsOnlinePayment"].int == 1
-        role = data["role"].text
+        role = state?["role"].text ?? data["role"].text
         isSignedUp = data["isSignup"].flag ?? false
         hasCheckedIn = data["isArrive"].flag
         hasOrder = data["isOrder"].flag ?? false
@@ -77,14 +79,20 @@ struct MatchDetail: Sendable {
     var checkInStatus: String {
         switch hasCheckedIn { case true: "已签到"; case false: "未签到"; case nil: "签到状态未知" }
     }
-    var canViewPersonalResults: Bool { hasParticipated && (statusID == 3 || statusID == 4 || statusID == 5 || statusID == 8) }
+    var canViewPersonalResults: Bool { hasParticipated && MatchStatus.hasResults(statusID) }
     var kind: String { MatchKind.catalog.first { $0.id == typeID }?.title ?? "比赛" }
 }
 
 extension BusinessAPI {
     func matchDetail(id: String, backup: Bool, token: String? = nil) async throws -> MatchDetail {
         guard !id.isEmpty, id.allSatisfy({ $0.isASCII && $0.isNumber }) else { throw APIError.invalidResponse }
-        return try MatchDetail(data: await request("/v1/match/info/\(id)", form: ["backup": backup ? "true" : "false"], token: token))
+        let form = ["backup": backup ? "true" : "false"]
+        let data = try await request("/v1/match/info/\(id)", form: form, token: token)
+        let state: APIValue?
+        if token != nil, !backup {
+            state = try? await request("/v1/match/state/\(id)", form: form, token: token)
+        } else { state = nil }
+        return try MatchDetail(data: data, state: state)
     }
 }
 
@@ -211,7 +219,7 @@ struct MatchSummaryScreen: View {
                         .background(Color.green.opacity(0.1), in: Capsule())
                         .accessibilityIdentifier("match.detail.signedUp")
                 } else {
-                    Text(detail.awaitingOpening() ? "待开放" : detail.statusID == 2 && detail.isFull && !detail.hasParticipated && !detail.hasOrder ? "报名已满" : ([4, 5].contains(detail.statusID ?? 0) ? "比赛中" : detail.statusID.flatMap(MatchStatus.init(rawValue:))?.title) ?? "比赛")
+                    Text(detail.awaitingOpening() ? "待开放" : detail.statusID == 2 && detail.isFull && !detail.hasParticipated && !detail.hasOrder ? "报名已满" : (MatchStatus.isOngoing(detail.statusID) ? "进行中" : detail.statusID.flatMap(MatchStatus.init(rawValue:))?.title) ?? "比赛")
                         .foregroundStyle(.secondary)
                 }
 
@@ -251,7 +259,7 @@ struct MatchSummaryScreen: View {
     @ViewBuilder private func registrationAction(_ detail: MatchDetail) -> some View {
             if detail.awaitingOpening() {
                 Button { } label: { Text("待开放").font(.headline).padding(.horizontal,24).frame(height:44) }
-                    .buttonStyle(.borderedProminent).clipShape(Capsule())
+                    .primaryActionStyle().clipShape(Capsule())
                     .disabled(true).accessibilityIdentifier("match.detail.pending")
             } else if detail.isSignedUp {
                 if showsOwnParticipation, match.startsAt.map({ $0 > Date.now }) ?? true {
@@ -261,12 +269,12 @@ struct MatchSummaryScreen: View {
                             Text(withdrawing ? "退赛中" : "退赛")
                         }.font(.headline)
                             .padding(.horizontal, 24).frame(height: 44).contentShape(Capsule())
-                    }.buttonStyle(.borderedProminent).clipShape(Capsule())
+                    }.primaryActionStyle().clipShape(Capsule())
                         .disabled(withdrawing || isLoading).accessibilityIdentifier("match.detail.withdraw")
                 }
             } else if detail.isFull && !detail.hasOrder {
                 Button { } label: { Text("报名已满").font(.headline).padding(.horizontal,24).frame(height:44) }
-                    .buttonStyle(.borderedProminent).clipShape(Capsule()).disabled(true)
+                    .primaryActionStyle().clipShape(Capsule()).disabled(true)
                     .accessibilityIdentifier("match.detail.full")
             } else if detail.canRegister {
                 Button {
@@ -279,7 +287,7 @@ struct MatchSummaryScreen: View {
                         if enrollment.completed { Text("已报名") }
                         else { Text(enrollment.busy ? enrollment.title : enrollment.orderID != nil || detail.hasOrder ? "待支付" : "报名") }
                     }.font(.headline).padding(.horizontal,24).frame(height:44)
-                }.buttonStyle(.borderedProminent).clipShape(Capsule()).disabled(isLoading || enrollment.busy || enrollment.completed).accessibilityIdentifier("match.detail.register")
+                }.primaryActionStyle().clipShape(Capsule()).disabled(isLoading || enrollment.busy || enrollment.completed).accessibilityIdentifier("match.detail.register")
             }
     }
     private func checkInStatus(_ detail: MatchDetail) -> some View {
@@ -318,7 +326,7 @@ struct MatchSummaryScreen: View {
             try Task.checkCancellation()
             guard version == loadVersion, sessionVersion == account.sessionVersion else { return }
             if loadedSessionVersion != sessionVersion {
-                detailTab = account.isLoggedIn && value.hasParticipated && [3, 4, 5].contains(value.statusID ?? 0) ? 1 : 0
+                detailTab = account.isLoggedIn && value.hasParticipated && MatchStatus.isOngoing(value.statusID) ? 1 : 0
             }
             detail = value
             loadedSessionVersion = sessionVersion
@@ -480,7 +488,7 @@ struct MatchResultsSection: View {
     @State private var generation = UUID()
     @State private var roundChoices: [SwissRankRound] = []
     @State private var selectedRound = ""
-    private var isLive: Bool { [3, 4, 5].contains(status) && !match.isBackup }
+    private var isLive: Bool { MatchStatus.isOngoing(status) && !match.isBackup }
     var body: some View {
         ForEach(showsKnockout ? knockout : []) { round in
             Section("淘汰赛 · " + round.title) {
@@ -502,13 +510,15 @@ struct MatchResultsSection: View {
             else if !loading { Text(account.isLoggedIn ? "暂无个人成绩记录" : "登录后查看个人成绩").foregroundStyle(.secondary) }
         }
         Section(roundTitle ?? "比赛成绩") {
-            ForEach(players) { player in resultRow(player).accessibilityIdentifier("match.results.player.\(player.id)") }
+            ForEach(players) { player in
+                resultRow(player).accessibilityIdentifier("match.results.player.\(player.id)")
+                    .onAppear {if player.id == players.last?.id, error == nil {Task {await load(reset:false)}}}
+            }
             if loading { ProgressView("正在读取成绩") }
             if let error {
                 Text(error).foregroundStyle(.secondary)
                 Button("重试") { Task { await load(reset: page == 0) } }
-            } else if !loading, players.isEmpty { Text("暂无已公布的排名").foregroundStyle(.secondary) }
-            if hasMore, !loading, error == nil { Button("加载更多成绩") { Task { await load(reset: false) } } }
+            } else if !loading, players.isEmpty { EmptyState(icon:"chart.bar",title:"暂无已公布的排名",subtitle:"") }
         }
         .task(id: "\(match.id)-\(account.sessionVersion)-\(refreshVersion)-\(status)") { await load(reset: true) }
     }
@@ -793,15 +803,15 @@ struct MatchGradeSheet: View {
                 if submission.phase == .submitting { ProgressView("正在提交成绩") }
                 HStack(spacing: 12) {
                     Button { dismiss() } label: { Text("取消").frame(maxWidth: .infinity) }
-                        .buttonStyle(.bordered)
+                        .secondaryActionStyle()
                         .disabled(submission.phase == .submitting)
                         .accessibilityIdentifier("match.grade.cancel")
                     Button { confirming = true } label: { Text("提交").frame(maxWidth: .infinity) }
-                        .buttonStyle(.borderedProminent)
+                        .primaryActionStyle()
                         .disabled(grade == nil || !submission.canSubmit)
                         .accessibilityIdentifier("match.grade.confirm")
                 }.controlSize(.large)
-                Text("请按自己的对局结果填报，确认无误后提交。")
+                Text("填报你的对局结果。")
                     .font(.footnote).foregroundStyle(.secondary)
             }.padding(.horizontal, 24).padding(.vertical, 20)
         }
@@ -866,7 +876,7 @@ struct MatchPairingsSection: View {
                                 if let submission = submissions[game.id] {
                                     gradeTarget = MatchGradeTarget(game: game, roundTitle: round.title, stage: round.stage, submission: submission)
                                 }
-                            }.buttonStyle(.borderedProminent).controlSize(.regular)
+                            }.primaryActionStyle().controlSize(.regular)
                                 .accessibilityIdentifier("match.grade.open.\(game.id)")
                         }
                     }
@@ -898,7 +908,7 @@ struct MatchPairingsSection: View {
         Section {
             if loading { ProgressView("正在读取对局") }
             if let error { Text(error).foregroundStyle(.secondary); Button("重新查询") { Task { await load() } } }
-            if !loading, error == nil, rounds.isEmpty { Text("暂无对局记录").foregroundStyle(.secondary) }
+            if !loading, error == nil, rounds.isEmpty { EmptyState(icon:"rectangle.on.rectangle",title:"暂无对局记录",subtitle:"") }
         }.onAppear {
             guard !didLoad else { return }
             didLoad = true

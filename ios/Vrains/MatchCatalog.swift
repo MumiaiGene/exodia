@@ -60,8 +60,9 @@ struct MatchCategoryPill: View {
     let kind: MatchKind
     var selected = false
     var compact = false
+    var color: Color? = nil
     @Environment(\.colorScheme) private var colorScheme
-    private var tint: Color { kind.tint }
+    private var tint: Color { color ?? kind.tint }
     var body: some View {
         Text(kind.title)
             .font(.system(size: compact ? 11 : 13, weight: .semibold))

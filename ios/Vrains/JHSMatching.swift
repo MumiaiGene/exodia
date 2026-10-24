@@ -352,7 +352,7 @@ enum JHSMatchOptimizer {
             throw JHSMatchingError.message("“\(request.item.name)”的单价上限为 ¥0，只能匹配免费商品，请调整价格区间后再匹配")
         }
         if criteria.maximumTotalCents==0 {throw JHSMatchingError.message("总价上限为 ¥0，请调整价格区间后再匹配")}
-        guard !requests.isEmpty,requests.allSatisfy(\.valid),criteria.valid,Set(requests.map(\.id)).count==requests.count else{throw JHSMatchingError.message("请选择卡片并填写有效的数量、价格区间")}
+        guard !requests.isEmpty,requests.allSatisfy(\.valid),criteria.valid,Set(requests.map(\.id)).count==requests.count else{throw JHSMatchingError.message("请选择卡牌并填写有效的数量、价格区间")}
         configure(session:session)
         guard client != nil else{throw JHSMarketplaceError.configuration}
         var job=JHSMatchJob(id:UUID(),createdAt:Date(),accountKey:Self.key(session),requests:requests)

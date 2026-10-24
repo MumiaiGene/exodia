@@ -46,11 +46,11 @@ struct MatchesScreen: View {
                 if !matches.isLoading, matches.hasLoaded, visibleItems.isEmpty {
                     if matches.hasMore {
                         VStack(spacing: 16) {
-                            Text("已加载比赛中暂无此分类").foregroundStyle(Design.secondary)
+                            Text("当前列表暂无此类比赛").foregroundStyle(Design.secondary)
                             Button("继续加载比赛") { Task { await matches.loadMore() } }
                                 .accessibilityIdentifier("matches.loadMore")
                         }.frame(maxWidth: .infinity).padding(.vertical, 40)
-                    } else { EmptyState(icon: "flag.checkered", title: "暂时没有这类比赛", subtitle: "") }
+                    } else { EmptyState(icon: "flag.checkered", title: "暂无比赛", subtitle: "") }
                 }
                 InfiniteScrollFooter(itemCount: matches.items.count, canLoadMore: matches.hasMore && matches.errorMessage == nil && allowsPagination, isLoading: matches.isLoading) { await matches.loadMore() }
             }
@@ -67,7 +67,7 @@ struct MatchesScreen: View {
         .stableSearchToolbar()
         .onSubmit(of: .search) { query.keywords = search.trimmingCharacters(in: .whitespacesAndNewlines) }
         .onChange(of: search) { _, value in if value.isEmpty { query.keywords = "" } }
-        .navigationTitle("比赛").navigationBarTitleDisplayMode(.inline)
+        .navigationTitle("比赛").navigationBarTitleDisplayMode(.large)
     }
     private func kindName(_ match: MatchItem) -> String {
         (matches?.kinds ?? MatchKind.catalog).first(where: { $0.id == match.typeID })?.title ?? "赛事"
@@ -111,12 +111,12 @@ struct LiveMatchRow: View {
 
 struct MatchStatusLabel: View {
     let match: MatchItem
-    private var state: Int { match.statusID ?? (match.status == "已结束" ? 8 : match.status == "进行中" || match.status == "比赛中" ? 3 : 2) }
+    private var state: Int { MatchStatus.isOngoing(match.statusID) ? 3 : match.statusID ?? (match.status == "已结束" ? 8 : match.status == "进行中" || match.status == "比赛中" ? 3 : 2) }
     var body: some View {
         let full = match.registered.map { count in match.capacity.map { $0 > 0 && count >= $0 } ?? false } ?? false
         let color: Color = state == 2 ? (full ? .orange : .green) : state == 3 ? .orange : .secondary
-        let title = state == 2 ? match.isSignedUp ? "已报名" : match.registered.map { count in match.capacity.map { "\(count) / \($0) 人" } ?? "\(count) 人已报名" } ?? "报名人数待公布" : state == 3 ? "进行中" : "已结束"
-        Label(title, systemImage: state == 2 ? match.isSignedUp ? "checkmark.circle.fill" : "person.2.fill" : state == 3 ? "play.circle.fill" : "checkmark.circle.fill")
+        let title = state == 2 ? match.isSignedUp ? "已报名" : match.registered.map { count in match.capacity.map { "\(count) / \($0) 人" } ?? "\(count) 人已报名" } ?? "报名人数待公布" : state == 3 ? "进行中" : state == 8 ? "已结束" : match.status ?? "比赛"
+        Label(title, systemImage: state == 2 ? match.isSignedUp ? "checkmark.circle.fill" : "person.2.fill" : state == 3 ? "play.circle.fill" : state == 8 ? "checkmark.circle.fill" : "calendar")
             .labelStyle(.titleAndIcon)
             .font(.system(size: 11, weight: .semibold)).foregroundStyle(color).lineLimit(1).fixedSize(horizontal: true, vertical: false)
             .padding(.horizontal, 8).padding(.vertical, 6).background(color.opacity(0.1), in: Capsule())

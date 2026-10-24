@@ -31,7 +31,7 @@ struct ProfileScreen: View {
                 Button { showingCart=true } label: { Label("购物车",systemImage:"cart") }.accessibilityIdentifier("profile.jhs.cart")
                 Button {showingPreorders=true} label:{Label("预购清单",systemImage:"list.bullet.clipboard")}.accessibilityIdentifier("profile.jhs.preorders")
             }
-            Section("Exodia") { profileRow("关于 Exodia",subtitle:"版本、数据来源与隐私",icon:"info.circle",destination:.about) }
+            Section("Vrains") { profileRow("关于 Vrains",subtitle:"版本、数据来源与隐私",icon:"info.circle",destination:.about) }
             if account.isLoggedIn {
                 Section {
                     Button("退出“一起来决斗”账号",role:.destructive){showingLogout=true}
@@ -43,7 +43,7 @@ struct ProfileScreen: View {
             .navigationTitle("个人").navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement:.topBarLeading) {
-                    CompactBackButton().accessibilityIdentifier("profile.close")
+                    ModalCloseButton().accessibilityIdentifier("profile.close")
                 }
                 ToolbarItem(placement:.topBarTrailing) {
                     Button { info = .settings } label: { Image(systemName:"gearshape").fontWeight(.semibold) }
@@ -156,16 +156,14 @@ struct JHSBindingSheet:View {
         NavigationStack {
             Form {
                 if jhs.isBound { boundContent } else {
-                    HStack(spacing: 12) { CompactBackButton(hitSize:44,action:{dismiss()}).accessibilityIdentifier("jhs.binding.back"); Text("登录集换社").font(.headline); Spacer() }
                     if tokenLogin {
                         TokenLoginFields(identifier: "jhs.token") { token in try jhs.importToken(token); dismiss() }
                     } else { bindingContent }
                 }
-            }.navigationTitle(jhs.isBound ? "集换社":"").navigationBarTitleDisplayMode(.inline)
-                .toolbar { if jhs.isBound { ToolbarItem(placement:.topBarLeading){ CompactBackButton(hitSize:44,action:{dismiss()}).accessibilityIdentifier("jhs.binding.back") } } }
-                .toolbar(jhs.isBound ? .visible : .hidden, for: .navigationBar)
+            }.navigationTitle(jhs.isBound ? "集换社":"登录集换社").navigationBarTitleDisplayMode(.inline)
+                .toolbar { ToolbarItem(placement:.cancellationAction){ ModalCloseButton(action:{dismiss()}).accessibilityIdentifier("jhs.binding.back") } }
                 .scrollDismissesKeyboard(.interactively)
-        }.presentationDragIndicator(.visible).presentationCornerRadius(34)
+        }.presentationDragIndicator(.visible)
             .confirmationDialog("解除集换社绑定？",isPresented:$confirmingUnbind,titleVisibility:.visible) {
                 Button("解除绑定",role:.destructive){do{try jhs.unbind();dismiss()}catch{errorMessage=error.localizedDescription}}
                 Button("取消",role:.cancel){}
@@ -234,93 +232,66 @@ struct LoginSheet: View {
     private enum Field { case phone, code }
 
     var body: some View {
-        if tokenLogin {
-            VStack(alignment: .leading, spacing: 27) {
-                HStack(spacing: 12) { CompactBackButton(); Text("登录一起来决斗").font(.headline); Spacer() }
-                TokenLoginFields(identifier: "login.token") { token in try await account.importToken(token); dismiss() }
-                Spacer()
-            }.padding(26).background(Design.canvas)
-        } else {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 27) {
-                HStack(spacing: 12) {
-                    CompactBackButton()
-                    Text("登录一起来决斗").font(.headline)
-                    Spacer()
-                }
-                VStack(alignment: .leading, spacing: 14) {
-                    Text("手机号").font(.system(size: 12, weight: .semibold)).foregroundStyle(Design.secondary)
-                    HStack(spacing: 14) {
-                        Text("+86").font(.system(size: 15, weight: .medium))
-                        Rectangle().fill(Design.secondary.opacity(0.2)).frame(width: 1, height: 20)
-                        TextField("请输入手机号", text: $phone)
-                            .keyboardType(.phonePad).textContentType(.telephoneNumber)
-                            .focused($focusedField, equals: .phone)
-                            .accessibilityIdentifier("login.phone")
-                            .onChange(of: phone) { _, value in
-                                let cleaned = String(value.filter(\.isNumber).prefix(11))
-                                if cleaned != value { phone = cleaned }
-                                errorMessage = nil
-                            }
-                    }.padding(18).background(Design.field,in:RoundedRectangle(cornerRadius:18))
-                    Text("验证码").font(.system(size: 12, weight: .semibold)).foregroundStyle(Design.secondary).padding(.top, 4)
-                    HStack(spacing: 8) {
-                        TextField("请输入短信验证码", text: $code)
-                            .keyboardType(.numberPad).textContentType(.oneTimeCode)
-                            .focused($focusedField, equals: .code)
-                            .accessibilityIdentifier("login.code")
-                            .onChange(of: code) { _, value in
-                                let cleaned = String(value.filter { $0.isASCII && $0.isNumber })
-                                if value != cleaned { code = cleaned }
-                                errorMessage = nil
-                            }
-                        TimelineView(.periodic(from: .now, by: 1)) { context in
-                            let remaining = max(0, Int(ceil(account.resendAt.timeIntervalSince(context.date))))
-                            Button { sendCode() } label: {
-                                if isSending { ProgressView().tint(Design.accent) }
-                                else { Text(remaining > 0 ? "\(remaining)s 后重发" : didSendCode ? "重新获取" : "获取验证码").font(.system(size: 12, weight: .semibold)) }
-                            }.foregroundStyle(Design.accent)
-                                .disabled(isSending || isLoggingIn || remaining > 0)
-                                .accessibilityIdentifier("login.sendCode")
-                        }
-                    }.padding(18).frame(minHeight:58).background(Design.field,in:RoundedRectangle(cornerRadius:18))
-                }
-                if let errorMessage {
-                    Label(errorMessage, systemImage: "exclamationmark.circle")
-                        .font(.system(size: 12)).foregroundStyle(Design.accent)
-                        .accessibilityIdentifier("login.error")
-                }
-                if didSendCode {
-                    Label("验证码已发送", systemImage: "checkmark.message")
-                        .font(.system(size: 12)).foregroundStyle(Color(hex: 0x4D8775))
-                        .accessibilityIdentifier("login.codeSent")
-                }
-                Button { login() } label: {
-                    HStack { Spacer(); if isLoggingIn { ProgressView() } else { Text("登录") }; Spacer() }.padding(.vertical, 8)
-                }.buttonStyle(.borderedProminent).disabled(isSending || isLoggingIn).accessibilityIdentifier("login.submit")
-                HStack(alignment: .top, spacing: 9) {
-                    Button { agreed.toggle() } label: {
-                        Image(systemName: agreed ? "checkmark.circle.fill" : "circle")
-                            .font(.system(size: 20)).foregroundStyle(agreed ? Design.accent : Design.secondary.opacity(0.6))
-                            .frame(width: 28, height: 28)
-                    }.buttonStyle(.plain).accessibilityLabel("同意用户协议与隐私政策")
-                        .accessibilityIdentifier("login.agreement")
-                        .accessibilityValue(agreed ? "已同意" : "未同意")
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text("我已阅读并同意").foregroundStyle(Design.secondary)
-                        HStack(spacing: 4) {
-                            Button("用户协议") { legalPage = .terms }
-                            Text("与").foregroundStyle(Design.secondary)
-                            Button("隐私政策") { legalPage = .privacy }
-                        }.foregroundStyle(Design.ink)
-                    }.font(.system(size: 11)).padding(.top, 3)
-                }
-            }.padding(26).padding(.bottom, 15)
-        }.background(Design.canvas).scrollDismissesKeyboard(.interactively)
-            .presentationDragIndicator(.visible).presentationCornerRadius(34)
-            .sheet(item: $legalPage) { ProfileDestinationSheet(destination: $0) }
+        NavigationStack {
+            loginContents.navigationTitle("登录一起来决斗").navigationBarTitleDisplayMode(.inline)
+                .toolbar { ToolbarItem(placement:.cancellationAction) { ModalCloseButton().accessibilityIdentifier("login.close") } }
+        }.presentationDragIndicator(.visible)
+            .sheet(item:$legalPage) { ProfileDestinationSheet(destination:$0) }
             .onDisappear { operation?.cancel() }
     }
+    @ViewBuilder private var loginContents: some View {
+        Form {
+            if tokenLogin {
+                Section {TokenLoginFields(identifier:"login.token") {token in try await account.importToken(token);dismiss()}}
+            } else {
+                Section("手机号") {
+                    HStack(spacing:12) {
+                        Text("+86").foregroundStyle(.secondary)
+                        TextField("请输入手机号",text:$phone)
+                            .keyboardType(.phonePad).textContentType(.telephoneNumber)
+                            .focused($focusedField,equals:.phone).accessibilityIdentifier("login.phone")
+                            .onChange(of:phone) {_,value in
+                                let cleaned=String(value.filter {$0.isASCII && $0.isNumber}.prefix(11))
+                                if value != cleaned {phone=cleaned};errorMessage=nil
+                            }
+                    }
+                }
+                Section("验证码") {
+                    HStack(spacing:8) {
+                        TextField("请输入短信验证码",text:$code)
+                            .keyboardType(.numberPad).textContentType(.oneTimeCode)
+                            .focused($focusedField,equals:.code).accessibilityIdentifier("login.code")
+                            .onChange(of:code) {_,value in
+                                let cleaned=String(value.filter {$0.isASCII && $0.isNumber})
+                                if value != cleaned {code=cleaned};errorMessage=nil
+                            }
+                        TimelineView(.periodic(from:.now,by:1)) {context in
+                            let remaining=max(0,Int(ceil(account.resendAt.timeIntervalSince(context.date))))
+                            Button {sendCode()} label: {
+                                if isSending {ProgressView()}
+                                else {Text(remaining > 0 ? "\(remaining) 秒后重发" : didSendCode ? "重新获取" : "获取验证码").font(.subheadline.weight(.semibold))}
+                            }.buttonStyle(.bordered).buttonBorderShape(.capsule).controlSize(.large).frame(minHeight:44)
+                                .disabled(isSending || isLoggingIn || remaining > 0).accessibilityIdentifier("login.sendCode")
+                        }
+                    }
+                }
+                if let errorMessage {Section {Label(errorMessage,systemImage:"exclamationmark.circle").foregroundStyle(Design.accent).accessibilityIdentifier("login.error")}}
+                if didSendCode {Section {Label("验证码已发送",systemImage:"checkmark.message").accessibilityIdentifier("login.codeSent")}}
+                Section {
+                    Toggle("我已阅读并同意",isOn:$agreed).accessibilityIdentifier("login.agreement")
+                    HStack(spacing:8) {
+                        Button {legalPage = .terms} label:{Text("用户协议").frame(minHeight:44).contentShape(Rectangle())}
+                        Text("及").foregroundStyle(.secondary)
+                        Button {legalPage = .privacy} label:{Text("隐私政策").frame(minHeight:44).contentShape(Rectangle())}
+                    }.buttonStyle(.borderless).font(.subheadline)
+                }
+                Section {
+                    Button {login()} label: {
+                        HStack {Spacer();if isLoggingIn {ProgressView()} else {Text("登录")};Spacer()}
+                    }.primaryActionStyle().disabled(isSending || isLoggingIn).accessibilityIdentifier("login.submit")
+                }
+            }
+        }.scrollContentBackground(.hidden).background(Design.canvas).scrollDismissesKeyboard(.interactively)
     }
 
     private func sendCode() {
@@ -356,11 +327,37 @@ struct LoginSheet: View {
     }
 }
 
+private struct VrainsInformationSection: Identifiable {
+    let title: String
+    let text: String
+    var id: String { title }
+}
+
+private enum VrainsInformation {
+    static let terms: [VrainsInformationSection] = [
+        .init(title:"服务范围",text:"本协议适用于 Vrains 的使用。Vrains 提供卡牌检索、卡组编辑与分享、资料更新、比赛信息、账号连接、商品查询及预购匹配。决斗页面标注为演示的功能不连接真实玩家。"),
+        .init(title:"账号与第三方服务",text:"登录一起来决斗或绑定集换社时，你授权 Vrains 使用所填写的登录信息访问对应服务。两个账号分别管理，适用各服务的账号规则。请使用你有权访问的账号，并妥善保管登录凭据。"),
+        .init(title:"比赛操作",text:"在你确认后，Vrains 会向一起来决斗发送报名、退赛或成绩提交请求。参赛资格、审核、费用和退款由比赛主办方及服务提供方决定；需要支付时，应在相应服务中完成。提交结果以服务端确认及比赛记录为准。"),
+        .init(title:"商品与匹配",text:"预购清单用于记录想购买的版本，匹配用于比较符合条件的购买方案，不会自动下单或付款。加入购物车需由你主动操作；价格、库存、品相和运费以集换社的最新信息及实际结算结果为准。"),
+        .init(title:"本机数据与分享",text:"卡组、收藏、预购清单和匹配记录保存在本机，不会因登录账号自动同步到其他设备。卸载 App 或移除本机数据可能导致记录丢失。请在分享卡组或图片前确认内容，并自行保存需要保留的数据。"),
+        .init(title:"内容与权利",text:"卡牌图片、名称、效果和第三方内容的权利归相应权利人所有。Vrains 展示数据来源；第三方内容的更新、准确性及可用性由各来源决定。你通过 Vrains 编辑或分享内容时，应遵守适用的法律及相关服务规则。"),
+        .init(title:"网络与服务变更",text:"网络或第三方服务异常可能造成查询和操作失败。结果不明确时，请先核对记录，再决定是否重试。Vrains 的功能或本协议更新后，可在 App 中查看新的说明。")
+    ]
+    static let privacy: [VrainsInformationSection] = [
+        .init(title:"账号信息",text:"你主动登录一起来决斗时，手机号和短信验证码通过加密网络连接发送至一起来决斗服务。绑定集换社时，绑定手机号和集换社验证码发送至集换社服务。两个服务的登录凭据分别使用，不相互交换。"),
+        .init(title:"登录凭据",text:"登录凭据及绑定账号信息保存在设备的系统安全存储中，不写入普通偏好设置或日志。退出账号或解除绑定会删除对应凭据，不影响另一个服务的登录。"),
+        .init(title:"本机记录",text:"卡组、收藏、预购清单、匹配记录及已下载的卡牌资料保存在本机。分享或导出仅在你主动操作时进行。"),
+        .init(title:"位置权限",text:"在你允许后，Vrains 使用设备位置获取所在城市，便于浏览附近比赛和店铺。你也可以手动选择地区，或在系统设置中关闭位置权限。"),
+        .init(title:"照片与通知",text:"保存分享图片时会请求相册写入权限；开启匹配完成通知时会请求通知权限。你可以在系统设置中调整这些权限。"),
+        .init(title:"其他信息",text:"Vrains 不读取通讯录，不保存账号密码，不包含广告或分析 SDK。第三方服务收到的信息由各服务按其隐私规则处理。")
+    ]
+}
+
 enum ProfileDestination: String, Identifiable {
     case cards = "我的收藏", matches = "关注的比赛", decks = "我的卡组"
-    case settings = "设置", about = "关于 Exodia", terms = "用户协议", privacy = "隐私政策"
+    case settings = "设置", about = "关于 Vrains", terms = "用户协议", privacy = "隐私政策"
     case orders = "比赛订单"
-    case profile = "个人资料", personalMatches = "我的比赛", messages = "消息中心", cardData = "卡片数据"
+    case profile = "个人资料", personalMatches = "我的比赛", messages = "消息中心", cardData = "卡牌数据"
     var id: String { rawValue }
 }
 
@@ -376,9 +373,8 @@ struct ProfileDestinationSheet: View {
     var body: some View {
         Group {
         if destination == .settings { settingsView }
-        else { ScrollView {
+        else { NavigationStack { ScrollView {
             VStack(alignment: .leading, spacing: 24) {
-                HStack { GlassBackButton(); Text(destination.rawValue).font(.title2.bold()); Spacer() }
                 switch destination {
                 case .profile, .personalMatches, .messages, .orders, .cards, .cardData:
                     Text("请从个人页面打开。")
@@ -395,20 +391,23 @@ struct ProfileDestinationSheet: View {
                     }
                 case .settings: EmptyView()
                 case .about:
-                    Text("为热爱而决斗。").font(.largeTitle.bold())
-                    information("EXODIA / 01", text: "一个关于卡牌、构筑与相遇的原型。参考 iOS 原生应用的排版和材质，让信息轻盈，让热爱成为主角。")
-                    information("数据来源", text: "账号、个人资料和个人赛事来自 Windoent 服务。其他页面仍使用原型示例资料，卡组封面为原创图形示意。")
+                    information("Vrains", text: "查找卡牌、管理卡组、浏览比赛与店铺，并连接一起来决斗和集换社账号。")
+                    if let version=Bundle.main.object(forInfoDictionaryKey:"CFBundleShortVersionString") as? String {
+                        information("版本",text:version)
+                    }
+                    information("数据来源",text:"卡牌、卡包和禁限卡表来自游戏王官方数据库；日文卡图来自 Neuron；中文卡名与文本优先采用游戏王官方简中资料，缺失部分参考百鸽数据库收录的 NWBBS 等译名与中文文本。新闻、账号和比赛信息由一起来决斗提供，集换社提供在售商品、版本及购物车服务。")
+                    information("本机数据",text:"卡组、收藏、预购清单和匹配记录保存在本机。决斗页面当前为演示模式。")
                 case .terms:
-                    information("账号服务说明", text: "手机号验证码登录使用 Windoent 账号服务，会向你填写的手机号发送短信，并读取该账号的个人资料、赛事统计和通知。本 App 不提供支付或报名提交。")
-                    information("本机功能", text: "卡组、收藏和赛事关注目前保存于本机。它们与账号服务中的资料和赛事数据分别管理。")
+                    ForEach(VrainsInformation.terms) { section in information(section.title,text:section.text) }
                 case .privacy:
-                    information("网络请求", text: "“一起来决斗”的手机号、短信验证码通过HTTPS发送至yugiohmatchapi.windoent.com。用户主动绑定集换社时，同一手机号和本次JHS验证码通过HTTPS发送至api.jihuanshe.com；两个服务不会互换token。")
-                    information("安全存储", text: "两套token、账号ID和绑定手机号分别保存于本机Keychain，不写入日志或普通偏好设置。退出或解除绑定只删除对应服务的凭据；网络暂时失败时保留凭据。")
-                    information("本机数据", text: "卡组、收藏与关注仍为本机数据。本 App 不访问通讯录，不保存密码，不包含广告或分析 SDK。")
+                    ForEach(VrainsInformation.privacy) { section in information(section.title,text:section.text) }
                 }
             }.padding(24)
-        }.background(Design.canvas) }
-        }.presentationDragIndicator(.visible).presentationCornerRadius(32)
+        }.background(Design.canvas)
+            .navigationTitle(destination.rawValue).navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement:.cancellationAction) { ModalCloseButton().accessibilityIdentifier("navigation.back") } }
+        } }
+        }.presentationDragIndicator(.visible)
             .sheet(isPresented: $showingCardData) { CardDataScreen() }
     }
     private var settingsView: some View {
@@ -421,7 +420,7 @@ struct ProfileDestinationSheet: View {
                     }.accessibilityIdentifier("settings.banlist").accessibilityValue(catalog.selectedFormat.title)
                     Button { showingCardData = true } label: {
                         HStack {
-                            Text("卡片数据与更新").foregroundStyle(Design.ink)
+                            Text("卡牌数据与更新").foregroundStyle(Design.ink)
                             Spacer()
                             Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
                         }
@@ -439,7 +438,7 @@ struct ProfileDestinationSheet: View {
                 }
             }.scrollContentBackground(.hidden).background(Design.canvas)
                 .navigationTitle("设置").navigationBarTitleDisplayMode(.inline)
-                .toolbar { ToolbarItem(placement: .topBarLeading) { CompactBackButton().accessibilityIdentifier("navigation.back") } }
+                .toolbar { ToolbarItem(placement: .topBarLeading) { ModalCloseButton().accessibilityIdentifier("navigation.back") } }
         }
     }
     private func copyToken(_ token: String?, service: String) {
@@ -467,7 +466,7 @@ private struct TokenLoginFields: View {
             SecureField("输入 token", text: $token)
                 .textInputAutocapitalization(.never).autocorrectionDisabled()
                 .privacySensitive().accessibilityIdentifier(identifier)
-                .padding(16).background(Design.field, in: RoundedRectangle(cornerRadius: 16))
+                .textFieldStyle(.roundedBorder)
             if let error { Text(error).font(.footnote).foregroundStyle(Design.accent) }
             Button {
                 loading = true; error = nil
@@ -479,7 +478,7 @@ private struct TokenLoginFields: View {
                 }
             } label: {
                 HStack { Spacer(); if loading { ProgressView() } else { Text("登录") }; Spacer() }
-            }.buttonStyle(.borderedProminent).disabled(loading || token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }.primaryActionStyle().disabled(loading || token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 .accessibilityIdentifier(identifier + ".submit")
         }.onDisappear { operation?.cancel(); token = "" }
     }
@@ -502,7 +501,7 @@ struct JHSCartScreen: View {
                 } else if let error=store.error,store.sellers.isEmpty {
                     ContentUnavailableView {Label("购物车加载失败",systemImage:"exclamationmark.triangle")} description:{Text(error)} actions:{Button("重试"){Task{await load()}}}
                 } else if store.sellers.isEmpty {
-                    ContentUnavailableView("购物车是空的",systemImage:"cart",description:Text("可在卡片在售列表中添加商品。"))
+                    ContentUnavailableView("购物车是空的",systemImage:"cart",description:Text("可在卡牌在售列表中添加商品。"))
                 } else {
                     ForEach(store.sellers) {seller in sellerSection(seller)}
                     if let error=store.error {
@@ -514,7 +513,7 @@ struct JHSCartScreen: View {
                         footer:{Text("不含失效商品和运费，以集换社结算时为准。")}
                 }
             }.navigationTitle("购物车").navigationBarTitleDisplayMode(.inline)
-                .toolbar {ToolbarItem(placement:.topBarLeading){CompactBackButton(hitSize:44,action:{dismiss()})}}
+                .toolbar {ToolbarItem(placement:.topBarLeading){ModalCloseButton(hitSize:44,action:{dismiss()})}}
                 .refreshable {if store.changing.isEmpty{await load()}}
                 .task(id:jhs.session?.token){await load()}
                 .sheet(isPresented:$binding){JHSBindingSheet()}
@@ -615,7 +614,7 @@ struct JHSPreordersScreen:View {
                     NavigationLink {JHSMatchJobsScreen()}label:{Label("匹配任务",systemImage:"clock.arrow.circlepath")}.accessibilityIdentifier("jhs.preorders.jobs")
                 }
                 if store.items.isEmpty {
-                    ContentUnavailableView("预购清单是空的",systemImage:"list.bullet.clipboard",description:Text("在卡片在售页点击右上角按钮，添加想购买的版本。"))
+                    ContentUnavailableView("预购清单是空的",systemImage:"list.bullet.clipboard",description:Text("在卡牌在售页点击右上角按钮，添加想购买的版本。"))
                 } else {
                     ForEach(store.items) {item in
                         Button {selection=item} label:{
@@ -638,7 +637,7 @@ struct JHSPreordersScreen:View {
                 }
             }.navigationTitle("预购清单").navigationBarTitleDisplayMode(.large)
                 .toolbar {
-                    ToolbarItem(placement:.topBarLeading){Button{dismiss()}label:{Image(systemName:"xmark")}.accessibilityLabel("关闭").accessibilityIdentifier("jhs.preorders.back")}
+                    ToolbarItem(placement:.topBarLeading){ModalCloseButton().accessibilityIdentifier("jhs.preorders.back")}
                     if !store.items.isEmpty{ToolbarItem(placement:.topBarTrailing){Button{showingMatch=true}label:{Image(systemName:"magnifyingglass")}.accessibilityLabel("设置匹配").accessibilityIdentifier("jhs.preorders.match")}}
                 }
                 .sheet(isPresented:$showingMatch){JHSMatchBuilderScreen(items:store.items){id in showingMatch=false;matchJobID=id}}

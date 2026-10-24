@@ -1,54 +1,37 @@
 import SwiftUI
 
 enum Design {
-    static let accent = Color(hex: 0xE74762)
+    static let accent = Color(uiColor: UIColor { traits in
+        traits.userInterfaceStyle == .dark
+            ? UIColor(red: 0.906, green: 0.278, blue: 0.384, alpha: 1)
+            : UIColor(red: 0.71, green: 0.15, blue: 0.27, alpha: 1)
+    })
+    static let action = Color(hex: 0xB52645)
     static let ink = Color(uiColor:.label)
     static let secondary = Color(uiColor:.secondaryLabel)
     static let canvas = Color(uiColor:.systemGroupedBackground)
     static let surface = Color(uiColor:.secondarySystemGroupedBackground)
     static let field = Color(uiColor:.secondarySystemBackground)
+    static func dateText(_ date: Date) -> String {
+        date.formatted(.dateTime.year().month().day().locale(Locale(identifier: "zh_CN")))
+    }
+}
+
+extension View {
+    func primaryActionStyle() -> some View {
+        buttonStyle(.borderedProminent).buttonBorderShape(.capsule)
+            .controlSize(.large).tint(Design.action).foregroundStyle(.white)
+    }
+    func secondaryActionStyle() -> some View {
+        buttonStyle(.bordered).buttonBorderShape(.capsule)
+            .controlSize(.large).tint(Design.accent)
+    }
 }
 
 extension Color {
     init(hex: UInt32) {
         self.init(.sRGB, red: Double((hex >> 16) & 255) / 255,
                   green: Double((hex >> 8) & 255) / 255, blue: Double(hex & 255) / 255, opacity: 1)
-    }
-}
-
-private struct PrototypeGlass: ViewModifier {
-    var cornerRadius: CGFloat
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-    func body(content: Content) -> some View {
-        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-        if reduceTransparency {
-            content.background(Color(uiColor: .secondarySystemBackground), in: shape)
-        } else {
-            glass(content, shape: shape)
-        }
-    }
-    @ViewBuilder private func glass(_ content: Content, shape: RoundedRectangle) -> some View {
-        #if compiler(>=6.2)
-        if #available(iOS 26.0, *) {
-            content.glassEffect(.regular, in: shape)
-        } else {
-            fallback(content, shape: shape)
-        }
-        #else
-        fallback(content, shape: shape)
-        #endif
-    }
-    private func fallback(_ content: Content, shape: RoundedRectangle) -> some View {
-        content
-            .background(.ultraThinMaterial, in: shape)
-            .overlay(shape.strokeBorder(.linearGradient(colors: [.white.opacity(0.9), .white.opacity(0.25)], startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 1).allowsHitTesting(false))
-            .shadow(color: Color.black.opacity(0.07), radius: 20, x: 0, y: 8)
-    }
-}
-
-extension View {
-    func prototypeGlass(cornerRadius: CGFloat = 24) -> some View {
-        modifier(PrototypeGlass(cornerRadius: cornerRadius))
     }
 }
 
@@ -89,6 +72,20 @@ struct SectionHeading: View {
             }
         }
     }
+}
+
+private struct NativeSelectionAction: ViewModifier {
+    let selected:Bool
+    var controlSize:ControlSize = .large
+    var tint:Color? = nil
+    @ViewBuilder func body(content:Content) -> some View {
+        if selected {content.buttonStyle(.borderedProminent).buttonBorderShape(.capsule).controlSize(controlSize).tint(tint ?? Design.action).foregroundStyle(.white)}
+        else {content.buttonStyle(.bordered).buttonBorderShape(.capsule).controlSize(controlSize).tint(tint ?? Design.secondary)}
+    }
+}
+
+extension View {
+    func selectionActionStyle(_ selected:Bool,controlSize:ControlSize = .large,tint:Color? = nil) -> some View {modifier(NativeSelectionAction(selected:selected,controlSize:controlSize,tint:tint))}
 }
 
 private struct ScrollEnd: Equatable {
@@ -207,14 +204,11 @@ struct AccentButton: View {
             HStack(spacing: 8) {
                 if isLoading { ProgressView().tint(.white) }
                 else if let icon { Image(systemName: icon) }
-                Text(title).font(.system(size: 16, weight: .semibold))
+                Text(title).font(.headline)
             }
             .frame(maxWidth: .infinity)
-            .frame(minHeight: 54)
-            .foregroundStyle(.white)
-            .background(Design.accent.gradient, in: RoundedRectangle(cornerRadius: 18))
         }
-        .buttonStyle(.plain)
+        .primaryActionStyle()
         .disabled(isLoading)
     }
 }
@@ -239,9 +233,8 @@ struct RoundIconButton: View {
     private var legacyButton: some View {
         Button(action: action) {
             Image(systemName: icon).font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(Design.ink).frame(width: 46, height: 46)
-                .prototypeGlass(cornerRadius: 23)
-        }.buttonStyle(.plain).accessibilityLabel(label)
+                .foregroundStyle(Design.ink).frame(width: 32, height: 32)
+        }.buttonStyle(.bordered).buttonBorderShape(.circle).controlSize(.large).accessibilityLabel(label)
     }
 }
 
@@ -311,60 +304,23 @@ struct EmptyState: View {
     let title: String
     let subtitle: String
     var body: some View {
-        VStack(spacing: 13) {
-            Image(systemName: icon).font(.system(size: 38, weight: .light)).foregroundStyle(Design.accent)
-            Text(title).font(.title3.bold()).foregroundStyle(Design.ink)
-            if !subtitle.isEmpty { Text(subtitle).font(.subheadline).foregroundStyle(Design.secondary).multilineTextAlignment(.center) }
-        }.frame(maxWidth: .infinity).padding(.vertical, 55)
+        ContentUnavailableView {
+            Label(title, systemImage: icon)
+        } description: {
+            if !subtitle.isEmpty { Text(subtitle) }
+        }.frame(maxWidth: .infinity)
     }
 }
 
-struct GlassBackButton: View {
-    @Environment(\.dismiss) private var dismiss
-    var body: some View {
-        RoundIconButton(icon: "chevron.left", label: "返回") { dismiss() }
-            .accessibilityIdentifier("navigation.back")
-    }
-}
-
-private struct GlassNavigationBack: ViewModifier {
-    @Environment(\.dismiss) private var dismiss
-    @ViewBuilder func body(content: Content) -> some View {
-        #if compiler(>=6.2)
-        if #available(iOS 26.0, *) {
-            content.navigationBarBackButtonHidden(true).toolbar {
-                ToolbarItem(placement:.topBarLeading) {
-                    Button { dismiss() } label: {
-                        Image(systemName:"chevron.left").fontWeight(.semibold)
-                    }.accessibilityLabel("返回").accessibilityIdentifier("navigation.back")
-                }
-            }
-        } else { legacy(content) }
-        #else
-        legacy(content)
-        #endif
-    }
-    private func legacy(_ content:Content) -> some View {
-        content.navigationBarBackButtonHidden(true)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) { GlassBackButton() }
-            }
-    }
-}
-
-extension View {
-    func glassNavigationBack() -> some View { modifier(GlassNavigationBack()) }
-}
-
-struct CompactBackButton: View {
-    var hitSize:CGFloat=32
+struct ModalCloseButton: View {
+    var hitSize:CGFloat=44
     var action:(()->Void)?=nil
     @Environment(\.dismiss) private var dismiss
     var body: some View {
         Button { if let action {action()} else{dismiss()} } label: {
-            Image(systemName: "chevron.left").font(.system(size: 16, weight: .semibold))
+            Image(systemName: "xmark").font(.system(size: 17, weight: .semibold))
                 .frame(width: hitSize, height: hitSize).contentShape(Rectangle())
-        }.buttonStyle(.plain).accessibilityLabel("返回")
+        }.accessibilityLabel("关闭").tint(Design.ink)
     }
 }
 

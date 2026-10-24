@@ -63,7 +63,7 @@ enum BanlistParser {
     }
     static func chinese(_ bytes:Data) throws ->BanlistSnapshot {
         guard let root=try JSONSerialization.jsonObject(with:bytes) as? [String:Any],root["code"] as? Int == 0,let lists=root["list"] as? [[String:Any]] else {throw CardCatalogError.invalidData}
-        let statuses=["禁止卡":0,"限制卡":1,"准限制卡":2,"解除限制卡片":3]
+        let statuses=["禁止卡":0,"限制卡":1,"准限制卡":2,"解除限制卡牌":3]
         var entries:[BanlistEntry]=[],date:String?
         for group in lists {
             guard let status=statuses[group["type"] as? String ?? ""],let cards=group["list"] as? [[String:Any]] else {continue}
@@ -112,11 +112,11 @@ struct BanlistHubScreen:View {
                         Label(current.date+" 适用",systemImage:"calendar").font(.subheadline)
                     } else {
                         Menu {
-                            Button("最新禁卡表") {date=""}
+                            Button("最新禁限卡表") {date=""}
                             ForEach(current.versions,id:\.self) {version in Button(version){date=version}}
                         } label: {
                             Label(current.date+(date.isEmpty && current.date == current.versions.first ? " · 最新":""),systemImage:"calendar").font(.subheadline.weight(.medium))
-                        }.accessibilityIdentifier("banlist.version").accessibilityLabel("禁卡表版本").accessibilityValue(current.date)
+                        }.accessibilityIdentifier("banlist.version").accessibilityLabel("禁限卡表版本").accessibilityValue(current.date)
                     }
                     Spacer()
                     if loading {ProgressView().controlSize(.small)}
@@ -129,7 +129,7 @@ struct BanlistHubScreen:View {
             Text(status.explanation).font(.caption).foregroundStyle(Design.secondary).frame(maxWidth:.infinity,alignment:.leading).padding(.horizontal,20).accessibilityIdentifier("banlist.explanation")
             if let message {Text(message).font(.caption).foregroundStyle(Design.secondary).padding(.horizontal,20).accessibilityIdentifier("banlist.message")}
             if current == nil,loading {Spacer();ProgressView();Spacer()}
-            else if entries.isEmpty {ContentUnavailableView("暂无\(status.title)卡片",systemImage:"rectangle.stack",description:Text("此版本没有列出这一类卡片。"))}
+            else if entries.isEmpty {ContentUnavailableView("暂无\(status.title)卡牌",systemImage:"rectangle.stack",description:Text("此版本没有列出这一类卡牌。"))}
             else {
                 List(entries) {entry in
                     Button {if let card=cards[entry.cid]{selected=card}} label: {
@@ -150,7 +150,7 @@ struct BanlistHubScreen:View {
                         .listRowBackground(Design.canvas)
                 }.listStyle(.plain).scrollContentBackground(.hidden).accessibilityIdentifier("banlist.list")
             }
-        }.padding(.top,12).background(Design.canvas).navigationTitle("禁卡表").navigationBarTitleDisplayMode(.inline)
+        }.padding(.top,12).background(Design.canvas).navigationTitle("禁限卡表").navigationBarTitleDisplayMode(.large)
             .task(id:"\(format.rawValue)-\(date)-\(catalog.revision)"){await load()}
             .sheet(item:$selected){CatalogCardDetailScreen(card:$0)}
     }
@@ -166,7 +166,7 @@ struct BanlistHubScreen:View {
         do {if let local=try await catalog.database.banlist(format:format,date:version){await install(local)}}
         catch is CancellationError {} catch {
             guard !Task.isCancelled else{return}
-            message=current == nil ? "本机没有此版本的禁卡表。":"暂时无法读取禁卡表。"
+            message=current == nil ? "本机没有此版本的禁限卡表。":"暂时无法读取禁限卡表。"
         }
     }
 }

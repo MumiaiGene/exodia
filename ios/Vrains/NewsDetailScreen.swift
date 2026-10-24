@@ -19,7 +19,7 @@ struct NewsDetailScreen: View {
                 }.frame(maxWidth: .infinity, maxHeight: .infinity).background(Design.canvas)
             }
         }.navigationTitle("动态详情").navigationBarTitleDisplayMode(.inline)
-            .toolbar(.visible, for: .navigationBar).glassNavigationBack().task(id: id) { await load() }
+            .toolbar(.visible, for: .navigationBar).task(id: id) { await load() }
     }
     private func load() async {
         guard !loading else { return }
@@ -55,7 +55,6 @@ enum NewsHTML {
         @media (prefers-color-scheme: dark) { :root { --canvas: #000000; --ink: #f2f2f7; --body: #e5e5ea; --secondary: #aeaeb2; } }
         * { box-sizing: border-box; }
         body { margin: 0; padding: 26px 22px 36px; background: var(--canvas); font-family: -apple-system, sans-serif; overflow-wrap: anywhere; }
-        .eyebrow { font-size: 10px; font-weight: 600; letter-spacing: 3px; color: #e74762; margin-bottom: 18px; }
         h1 { font-size: 27px; line-height: 1.42; letter-spacing: -0.7px; color: var(--ink); margin: 0 0 16px; }
         .meta { font-size: 11px; line-height: 1.8; color: var(--secondary); margin-bottom: 28px; }
         .content, .content * { color: var(--body) !important; background-color: transparent !important; font-family: -apple-system, sans-serif !important; line-height: 1.85 !important; }
@@ -63,8 +62,9 @@ enum NewsHTML {
         .content p { margin: 0 0 18px; }
         .content img, .content video { display: block !important; max-width: 100% !important; height: auto !important; margin: 18px auto !important; border-radius: 16px; }
         .content table { width: 100% !important; font-size: 13px; }
-        .content a { color: #e74762 !important; }
-        </style></head><body><div class="eyebrow">EXODIA / 动态</div>
+        .content a { color: #b52645 !important; }
+        @media (prefers-color-scheme: dark) { .content a { color: #ff8fa6 !important; } }
+        </style></head><body>
         <h1>\(escape(detail.title))</h1><div class="meta">\(metadata)</div>
         <article class="content">\(content.isEmpty ? fallback : content)</article></body></html>
         """

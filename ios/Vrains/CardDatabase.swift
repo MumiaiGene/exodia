@@ -112,10 +112,10 @@ actor CardDatabase {
         let db=try open()
         func count(_ sql:String)throws->Int64 {let q=try CardStatement(database:db,sql:sql);_ = try q.next();return q.integer(0) ?? 0}
         var result:[CatalogSource:String]=[:]
-        result[.cards]="\(try count("SELECT count(*) FROM card_localizations WHERE locale='ja' AND source='official-db'").formatted()) 张日文卡片 · 官方简中优先"
+        result[.cards]="\(try count("SELECT count(*) FROM card_localizations WHERE locale='ja' AND source='official-db'").formatted()) 张日文卡牌 · 官方简中优先"
         result[.packs]="\(try count("SELECT count(*) FROM packs WHERE locale='ja'").formatted()) 个日文卡包 · \(try count("SELECT count(*) FROM printings WHERE locale='ja'").formatted()) 条收录"
         result[.translations]="\(try count("SELECT count(*) FROM card_localizations WHERE source='ygocdb'").formatted()) 条本机翻译"
-        result[.jhs]="\(try count("SELECT count(*) FROM jhs_versions").formatted()) 条版本记录 · 待补齐 \(try pendingJHSCardIDs().count) 张卡片"
+        result[.jhs]="\(try count("SELECT count(*) FROM jhs_versions").formatted()) 条版本记录 · 待补齐 \(try pendingJHSCardIDs().count) 张卡牌"
         result[.neuron]="本机版本 \(try state("neuron_data_version")) · 仅日文及日文异画"
         for format in CardFormat.allCases {let snapshot=try banlist(format:format);result[.banlist(format)]=snapshot.map{"当期 \($0.date) · \($0.versions.count) 期版本"} ?? "尚无本机资料"}
         return result
@@ -187,6 +187,9 @@ actor CardDatabase {
         if filter.race != 0 { condition("(c.race & ?) != 0", .integer(filter.race)) }
         if filter.attribute != 0 { condition("(c.attribute & ?) != 0", .integer(filter.attribute)) }
         if !filter.levelKind.isEmpty { condition("c.level_kind=?", .text(filter.levelKind)) }
+        if Int64(filter.minLevel) != nil || Int64(filter.maxLevel) != nil {
+            clauses.append("c.level_kind IN ('level','rank')")
+        }
         for (column, low, high) in [("level", filter.minLevel, filter.maxLevel)] {
             if let low = Int64(low) { condition("c.\(column)>=?", .integer(low)) }
             if let high = Int64(high) { condition("c.\(column)<=?", .integer(high)) }
@@ -199,7 +202,7 @@ actor CardDatabase {
             clauses.append(sql.replacingOccurrences(of: "{values}", with: Array(repeating:"?",count:selected.count).joined(separator:",")))
             values += selected.map(CardSQLValue.integer)
         }
-        selection("c.level IN ({values})", values: selectedValues(filter.selectedLevels, 0...13))
+        selection("(c.level_kind IN ('level','rank') AND c.level IN ({values}))", values: selectedValues(filter.selectedLevels, 0...13))
         let scales = selectedValues(filter.selectedScales, 0...13)
         if !scales.isEmpty {
             let placeholders=Array(repeating:"?",count:scales.count).joined(separator:",")
@@ -457,7 +460,7 @@ actor CardDatabase {
         for id in ids {
             let conflict=try CardStatement(database:db,sql:"SELECT cid FROM jhs_card_mappings WHERE jhs_card_id=? AND cid!=? AND match_status='verified' LIMIT 1")
             try conflict.bind([.integer(id),.integer(update.cid)])
-            if try conflict.next() {complete=false;detail="映射与其他卡片冲突，保留原资料等待核对"}
+            if try conflict.next() {complete=false;detail="映射与其他卡牌冲突，保留原资料等待核对"}
         }
         for record in update.records {
             let conflict=try CardStatement(database:db,sql:"SELECT jhs_card_id FROM jhs_versions WHERE jhs_version_id=? AND jhs_card_id!=? LIMIT 1")

@@ -50,6 +50,7 @@ struct ContentView: View {
                 }
             }
             .tint(Design.accent)
+            .environment(\.locale,Locale(identifier:"zh_CN"))
             .environment(store).environment(store.account).environment(store.jhs).environment(store.news)
             .environment(store.matches).environment(store.catalog)
             .environment(duel).environment(location)
@@ -75,7 +76,7 @@ struct ContentView: View {
                 Button("下载并更新"){Task {await store.catalog.installPending()}}
                 Button("暂不更新",role:.cancel){store.catalog.skipUpdate()}
             } message:{
-                Text("预估下载 \(store.catalog.pendingUpdate?.sizeLabel ?? "—")\n\n"+(store.catalog.pendingUpdate?.itemLabels.map{"• "+$0}.joined(separator:"\n") ?? "")+"\n\n新增与替换卡图将完整下载并保存在 App 内；尚无集换社版本的卡片会保留待补齐任务，下次继续尝试。")
+                Text("预估下载 \(store.catalog.pendingUpdate?.sizeLabel ?? "—")\n\n"+(store.catalog.pendingUpdate?.itemLabels.map{"• "+$0}.joined(separator:"\n") ?? ""))
             }
             .alert("资料更新未完成",isPresented:Binding(get:{store.catalog.showUpdateFailure},set:{store.catalog.showUpdateFailure=$0})) {
                 Button("重试"){Task{await store.catalog.retryUpdate()}}
@@ -161,9 +162,8 @@ struct ContentView: View {
                 Button { registrationAccessory.action?() } label: {
                     Text(registrationAccessory.title).font(.headline)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .foregroundStyle(.white).background(Design.accent, in: Capsule())
-                        .contentShape(Capsule())
-                }.buttonStyle(.plain).accessibilityIdentifier("match.detail.register")
+                        .foregroundStyle(.white)
+                }.primaryActionStyle().accessibilityIdentifier("match.detail.register")
             } }
         else if #available(iOS 18.0,*) { modernTabs }
         else { legacyTabs }

@@ -14,7 +14,6 @@ struct HomeScreen: View {
         NavigationStack(path: $path) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 25) {
-                    Text("EXODIA ver.").font(.system(size:10,weight:.bold)).tracking(2.8).foregroundStyle(Design.secondary)
                     if !news.banners.isEmpty {
                         NewsCarousel(banners: news.banners) { path.append(.article($0)) }
                     } else if news.isLoading, !news.hasLoaded {
@@ -36,7 +35,7 @@ struct HomeScreen: View {
                             NewsLoadError(message: message) { Task { await news.refresh() } }
                         }
                         if news.hasLoaded, news.articles.isEmpty {
-                            EmptyState(icon: "newspaper", title: "新的动态，敬请期待", subtitle: "下拉刷新，查看最新资讯。")
+                            EmptyState(icon: "newspaper", title: "暂无动态", subtitle: "下拉刷新，查看最新资讯。")
                         }
                         NewsRows(articles: news.articles) { path.append(.article($0.id)) }
                         InfiniteScrollFooter(itemCount: news.articles.count, canLoadMore: news.hasMore && news.errorMessage == nil, isLoading: news.isLoading) {
@@ -47,7 +46,7 @@ struct HomeScreen: View {
             }.accessibilityIdentifier("home.scroll")
             .background(Design.canvas)
             .automaticPagination(itemCount: news.articles.count, canLoadMore: news.hasMore && news.errorMessage == nil, isLoading: news.isLoading) { await news.loadMore() }
-            .navigationTitle("一起来决斗").navigationBarTitleDisplayMode(.large)
+            .navigationTitle("Vrains").navigationBarTitleDisplayMode(.large)
             .toolbar { ToolbarItem(placement:.topBarTrailing) { HomeProfileButton { showingProfile=true } } }
             .task { await news.loadInitial() }
             .refreshable { await news.refresh() }
@@ -66,7 +65,7 @@ private struct HomeProfileButton: View {
     @Environment(AccountStore.self) private var account
     var action:()->Void
     var body:some View {
-        Button(action:action){avatar.frame(width:30,height:30)}
+        Button(action:action){avatar.frame(width:30,height:30).frame(minWidth:44,minHeight:44)}
             .accessibilityLabel("打开个人页").accessibilityIdentifier("home.avatar")
     }
     private var avatar:some View {
@@ -130,7 +129,7 @@ struct NewsCarousel: View {
                 Spacer(minLength: 0)
                 if banner.newsID != nil {
                     Image(systemName: "arrow.up.right").font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(.white).frame(width: 39, height: 39).prototypeGlass(cornerRadius: 20)
+                        .foregroundStyle(.white).frame(width:44,height:44)
                 }
             }.padding(20)
             }.frame(width: geometry.size.width, height: geometry.size.height).clipped()
@@ -189,7 +188,6 @@ struct NewsListScreen: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 15) {
-                Text("来自决斗世界的最新消息").font(.system(size: 12)).foregroundStyle(Design.secondary).padding(.top, 12)
                 if let message = news.errorMessage { NewsLoadError(message: message) { Task { await news.refresh() } } }
                 if news.hasLoaded, news.articles.isEmpty { EmptyState(icon: "newspaper", title: "暂无动态", subtitle: "下拉刷新，查看最新消息。") }
                 LazyVStack(spacing: 0) {
@@ -211,7 +209,7 @@ struct NewsListScreen: View {
             }.padding(.horizontal, 22).padding(.bottom, 25)
         }.background(Design.canvas).navigationTitle("动态").navigationBarTitleDisplayMode(.large)
             .automaticPagination(itemCount: news.articles.count, canLoadMore: news.hasMore && news.errorMessage == nil, isLoading: news.isLoading) { await news.loadMore() }
-            .toolbar(.visible, for: .navigationBar).glassNavigationBack()
+            .toolbar(.visible, for: .navigationBar)
             .task { await news.loadInitial() }.refreshable { await news.refresh() }
     }
 }

@@ -63,7 +63,7 @@ enum OfficialHTML {
         }
         if (translated["desc"] as? String ?? "").isEmpty { translated["desc"]=desc }
         if (translated["pdesc"] as? String ?? "").isEmpty { translated["pdesc"]=pdesc }
-        let preferred=["sc_name","nwbbs_n","jp_name"].compactMap { raw[$0] as? String }.first ?? "卡片 \(cid)";raw["display_name"]=preferred
+        let preferred=["sc_name","nwbbs_n","jp_name"].compactMap { raw[$0] as? String }.first ?? "卡牌 \(cid)";raw["display_name"]=preferred
         var data=raw["data"] as? [String:Any] ?? ["ot":1,"setcode":0]
         let vals=groups(#"<span class="item_box_value">\s*([^<]+)</span>"#,in:html).map { clean($0[0]) }
         let species=groups(#"<p class="species">(.*?)</p>"#,in:html).first?.first.map(clean) ?? ""
@@ -110,17 +110,17 @@ enum CatalogSource:String,CaseIterable,Identifiable,Sendable {
     var id:String {rawValue}
     var title:String {switch self {
         case .packs:"OCG 日文卡包与收录"
-        case .ocg:"OCG 禁卡表"
-        case .tcg:"TCG 禁卡表"
-        case .chinese:"简中禁卡表"
-        case .neuron:"Neuron 卡图与映射"
-        case .cards:"官方卡片资料"
+        case .ocg:"OCG 禁限卡表"
+        case .tcg:"TCG 禁限卡表"
+        case .chinese:"简中禁限卡表"
+        case .neuron:"Neuron 卡图"
+        case .cards:"官方卡牌资料"
         case .translations:"NW 译名与文本"
-        case .jhs:"集换社收录与版本映射"
+        case .jhs:"集换社收录与版本"
     }}
     var origin:String {switch self {
-        case .packs,.ocg,.tcg,.cards:"游戏王官方 DB"
-        case .chinese:"游戏王简中官方 DB"
+        case .packs,.ocg,.tcg,.cards:"游戏王官方数据库"
+        case .chinese:"游戏王简中官方数据库"
         case .neuron:"Neuron"
         case .translations:"百鸽数据库"
         case .jhs:"集换社"
@@ -128,7 +128,7 @@ enum CatalogSource:String,CaseIterable,Identifiable,Sendable {
     static func banlist(_ format:CardFormat)->Self {switch format {case .ocg:.ocg;case .tcg:.tcg;case .simplified:.chinese}}
 }
 enum CatalogSourcePhase:String,Sendable {
-    case waiting="待检查",checking="检查中",current="无更新",available="有更新",updating="更新中",complete="已更新",failed="失败",dependent="随卡片更新",cancelled="已取消",pending="待补齐"
+    case waiting="待检查",checking="检查中",current="无更新",available="有更新",updating="更新中",complete="已更新",failed="失败",dependent="随资料更新",cancelled="已取消",pending="待补齐"
 }
 struct CatalogSourceStatus:Sendable {
     var phase:CatalogSourcePhase = .waiting
@@ -164,10 +164,10 @@ struct CatalogUpdatePlan:Sendable {
         affectedSources.map {source in
             switch source {
             case .packs: "OCG 日文卡包与收录：\(packs.count) 个卡包"
-            case .neuron: "Neuron 卡图与映射：\(neuron.version)"
-            case .cards: "官方卡片资料：按本次新增或变更卡片补齐"
-            case .translations: "NW 译名与文本：随变更卡片更新"
-            case .jhs: "集换社收录与版本映射："+(jhsRetryIDs.isEmpty ? "随变更卡片更新":"重试 \(jhsRetryIDs.count) 张待补齐卡片")
+            case .neuron: "Neuron 卡图：\(neuron.version)"
+            case .cards: "官方卡牌资料：按本次新增或变更卡牌补齐"
+            case .translations: "NW 译名与文本：随变更卡牌更新"
+            case .jhs: "集换社收录与版本："+(jhsRetryIDs.isEmpty ? "随变更卡牌更新":"重试 \(jhsRetryIDs.count) 张待补齐卡牌")
             default: source.title+"："+(banlists.first(where:{CatalogSource.banlist(CardFormat(rawValue:$0.format) ?? .ocg)==source})?.date ?? "补齐历史版本")
             }
         }
@@ -254,7 +254,7 @@ actor CardUpdater {
         let neuron=NeuronUpdateProbe(version:probe.version,estimatedBytes:probe.estimatedBytes,hasChanges:probe.hasChanges || NeuronArtworkStore.newer(probe.version,than:version))
         await observe?(.init(source:.neuron,phase:neuron.hasChanges ? .available:.current,detail:"远端版本 \(neuron.version) · 卡图完整保存到 App"))
         let jhsRetry=try await database.pendingJHSCardIDs()
-        await observe?(.init(source:.jhs,phase:jhsRetry.isEmpty ? .dependent:.available,detail:jhsRetry.isEmpty ? "随变更卡片更新；内置资料为构建时基线":"\(jhsRetry.count) 张卡片等待继续补齐"))
+        await observe?(.init(source:.jhs,phase:jhsRetry.isEmpty ? .dependent:.available,detail:jhsRetry.isEmpty ? "随变更卡牌更新；内置资料为构建时基线":"\(jhsRetry.count) 张卡牌等待继续补齐"))
         // HTML is estimated at 150 KB per card, 100 cards per new pack. Japanese artwork payloads are included in the Neuron estimate.
         let estimate=Int64(changed.count)*15_000_000+Int64(bans.count+history.count)*200_000+neuron.estimatedBytes+Int64(jhsRetry.count)*200_000
         return .init(packs:changed,banlists:bans,neuron:neuron,estimatedBytes:max(estimate,neuron.hasChanges ? 1_000_000:0),history:history,jhsRetryIDs:jhsRetry)
@@ -263,7 +263,7 @@ actor CardUpdater {
         var banlists=plan.banlists
         for version in plan.history {
             await observe?(.init(source:.banlist(version.format),phase:.updating,detail:"补齐历史版本 "+version.date))
-            await progress("补齐历史禁卡表 "+version.date)
+            await progress("补齐历史禁限卡表 "+version.date)
             let bytes=try await fetch(BanlistRepository.url(format:version.format,date:version.date))
             banlists.append(try BanlistParser.html(String(decoding:bytes,as:UTF8.self),format:version.format,date:version.date))
             try await Task.sleep(for:.milliseconds(400))
@@ -277,7 +277,7 @@ actor CardUpdater {
             members[pack.id]=cards;ids.formUnion(cards.map(\.id))
         }
         if plan.neuron.hasChanges {
-            await observe?(.init(source:.neuron,phase:.updating,detail:"下载目录与卡片映射 \(plan.neuron.version)"))
+            await observe?(.init(source:.neuron,phase:.updating,detail:"下载目录与卡牌映射 \(plan.neuron.version)"))
             await progress("更新 Neuron 卡图目录")
             _ = try await artwork.synchronize(progress:progress)
             let changed=try await database.changedNeuronCards(artwork.cardTexts())
@@ -289,8 +289,8 @@ actor CardUpdater {
         }
         var payloads:[Data]=[]
         for (index,cid) in ids.sorted().enumerated() {
-            try Task.checkCancellation();await progress("更新卡片资料 \(index+1)/\(ids.count)")
-            await observe?(.init(source:.cards,phase:.updating,detail:"\(index+1) / \(ids.count) 张卡片"))
+            try Task.checkCancellation();await progress("更新卡牌资料 \(index+1)/\(ids.count)")
+            await observe?(.init(source:.cards,phase:.updating,detail:"\(index+1) / \(ids.count) 张卡牌"))
             let url=URL(string:"\(PrivateConfiguration.value("officialDatabaseOrigin"))/yugiohdb/card_search.action?ope=2&cid=\(cid)&request_locale=ja")!
             let html=String(decoding:try await fetch(url),as:UTF8.self)
             // Translation failure aborts this transaction; a skipped revision is never marked installed.
@@ -321,7 +321,7 @@ actor CardUpdater {
         for (index,cid) in jhsIDs.enumerated() {
             try Task.checkCancellation()
             await progress("更新集换社收录 \(index+1)/\(jhsIDs.count)")
-            await observe?(.init(source:.jhs,phase:.updating,detail:"\(index+1) / \(jhsIDs.count) 张卡片"))
+            await observe?(.init(source:.jhs,phase:.updating,detail:"\(index+1) / \(jhsIDs.count) 张卡牌"))
             let input:(Int64?,[CardName])
             if let value=fresh[cid] {input=value}
             else {let details=try await database.details(cid:cid);input=(details.card.passcode,details.names)}
@@ -408,16 +408,16 @@ final class CardCatalog {
         isUpdating=true;isChecking=true;progress="检查资料更新";message=nil;activeSource=nil
         pendingUpdate=nil;showUpdatePrompt=false;showUpdateFailure=false
         sourceStatuses=[:]
-        sourceStatuses[.jhs] = .init(phase:.dependent,detail:"随变更卡片更新；未查到的版本会持续补齐")
-        sourceStatuses[.cards] = .init(phase:.dependent,detail:"根据卡包、禁卡表及 Neuron 变更补齐")
-        sourceStatuses[.translations] = .init(phase:.dependent,detail:"随新增或变更卡片查询，不独立全库检查")
+        sourceStatuses[.jhs] = .init(phase:.dependent,detail:"随变更卡牌更新；未查到的版本会持续补齐")
+        sourceStatuses[.cards] = .init(phase:.dependent,detail:"根据卡包、禁限卡表及 Neuron 变更补齐")
+        sourceStatuses[.translations] = .init(phase:.dependent,detail:"随新增或变更卡牌查询，不独立全库检查")
         defer{isUpdating=false;isChecking=false;progress="";activeSource=nil}
         do {
             let plan=try await updater.check(database:database) {[weak self] event in await self?.receive(event)}
             try await database.recordCheck();metadata=try await database.metadata()
             if plan.hasChanges {
                 pendingUpdate=plan
-                for source in plan.affectedSources where [.cards,.translations,.jhs].contains(source) {sourceStatuses[source] = .init(phase:.available,detail:"按本次变更卡片补齐；数量在下载目录后确定")}
+                for source in plan.affectedSources where [.cards,.translations,.jhs].contains(source) {sourceStatuses[source] = .init(phase:.available,detail:"按本次变更卡牌补齐；数量在下载目录后确定")}
                 showUpdatePrompt=true
             }
             else{pendingUpdate=nil;startupResolved=true;message="资料已是最新。"}
@@ -437,9 +437,9 @@ final class CardCatalog {
             try await task.value
             for source in plan.affectedSources {sourceStatuses[source] = .init(phase:.complete,detail:"已校验并保存到本机")}
             let unresolved=try await database.pendingJHSCardIDs()
-            if !unresolved.isEmpty {sourceStatuses[.jhs] = .init(phase:.pending,detail:"\(unresolved.count) 张卡片尚未查到或核实版本，下次继续补齐")}
+            if !unresolved.isEmpty {sourceStatuses[.jhs] = .init(phase:.pending,detail:"\(unresolved.count) 张卡牌尚未查到或核实版本，下次继续补齐")}
             localSources=try await database.updateSourceOverview()
-            metadata=try await database.metadata();revision+=1;artworkRevision+=1;pendingUpdate=nil;startupResolved=true;message=unresolved.isEmpty ? "资料更新完成。":"资料已更新，仍有 \(unresolved.count) 张卡片的集换社版本待补齐，下次继续尝试。"
+            metadata=try await database.metadata();revision+=1;artworkRevision+=1;pendingUpdate=nil;startupResolved=true;message=unresolved.isEmpty ? "资料更新完成。":"资料已更新，仍有 \(unresolved.count) 张卡牌的集换社版本待补齐，下次继续尝试。"
         } catch {
             for source in plan.affectedSources {sourceStatuses[source] = .init(phase:task.isCancelled ? .cancelled:.failed,detail:"未提交本次资料，本机版本已保留")}
             if task.isCancelled {message="已取消更新，本机资料已保留。";skipUpdate()}

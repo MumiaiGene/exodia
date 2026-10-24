@@ -136,7 +136,7 @@ enum CollectionParser {
             guard let cid=OfficialHTML.groups(#"class="cid"\s+value="(\d+)""#,in:row).first?.first.flatMap(Int64.init) else{continue}
             count+=1
             if seen.insert(cid).inserted {
-                let name=OfficialHTML.groups(#"<span class="card_name">(.*?)</span>"#,in:row).first?.first.map(OfficialHTML.clean) ?? "卡片 \(cid)"
+                let name=OfficialHTML.groups(#"<span class="card_name">(.*?)</span>"#,in:row).first?.first.map(OfficialHTML.clean) ?? "卡牌 \(cid)"
                 let rarities=OfficialHTML.groups(#"<div class="lr_icon[^\"]*\brid_([0-9]+)\b[^\"]*"([^>]*)>\s*<p>(.*?)</p>\s*<span[^>]*>(.*?)</span>"#,in:row).map{item in
                     CollectionRarity(code:OfficialHTML.clean(item[2]),name:OfficialHTML.clean(item[3]),colorHex:OfficialHTML.groups(#"background-color:\s*(#[0-9a-fA-F]{6})"#,in:item[1]).first?.first,rid:item[0])
                 }
@@ -182,13 +182,17 @@ struct CollectionScreen:View {
         VStack(spacing:12) {
             Picker("收录语言",selection:$locale) {Text("OCG（日文）").tag("ja");Text("简体中文").tag("cn")}.pickerStyle(.segmented).padding(.horizontal,16).accessibilityIdentifier("collection.locale")
             HStack {
-                Text("发售时间").font(.subheadline);Spacer()
-                Button {ascending.toggle()} label:{Image(systemName:ascending ? "arrow.up":"arrow.down").frame(width:40,height:32)}.accessibilityLabel(ascending ? "最早优先":"最新优先").accessibilityIdentifier("collection.sort")
+                Text("排序").font(.subheadline);Spacer()
+                Menu {
+                    Picker("顺序",selection:$ascending) {Text("升序").tag(true);Text("降序").tag(false)}
+                } label: {
+                    Label("发售日",systemImage:ascending ? "arrow.up":"arrow.down").frame(minHeight:44)
+                }.accessibilityLabel("卡包排序").accessibilityValue(ascending ? "发售日 · 升序":"发售日 · 降序").accessibilityIdentifier("collection.sort")
             }.padding(.horizontal,16)
             ScrollView(.horizontal,showsIndicators:false) {
                 HStack(spacing:8) {ForEach(CollectionCategory.options(locale)){item in
-                    Button {category=item.id} label:{Text(item.title).font(.subheadline).padding(.horizontal,13).padding(.vertical,8).foregroundStyle(category == item.id ? .white:Design.ink).background(category == item.id ? Design.accent:Design.surface,in:Capsule())}
-                        .buttonStyle(.plain).accessibilityIdentifier("collection.category.\(item.id)").accessibilityAddTraits(category == item.id ? .isSelected:[])
+                    Button {category=item.id} label:{Text(item.title).font(.subheadline)}
+                        .selectionActionStyle(category == item.id).accessibilityIdentifier("collection.category.\(item.id)").accessibilityAddTraits(category == item.id ? .isSelected:[])
                 }}.padding(.horizontal,16)
             }.accessibilityIdentifier("collection.categories")
             HStack {Text("\(visible.count) 个卡包").accessibilityIdentifier("collection.count");Spacer();if busy {ProgressView().controlSize(.small)}}.font(.caption).foregroundStyle(Design.secondary).padding(.horizontal,20)
@@ -196,7 +200,7 @@ struct CollectionScreen:View {
             List {
                 ForEach(visible){pack in row(pack)}
             }.listStyle(.plain).scrollContentBackground(.hidden).accessibilityIdentifier("collection.list")
-        }.padding(.top,12).background(Design.canvas).navigationTitle("收录").navigationBarTitleDisplayMode(.inline)
+        }.padding(.top,12).background(Design.canvas).navigationTitle("收录").navigationBarTitleDisplayMode(.large)
             .task(id:"\(locale)-\(catalog.revision)"){packs=(try? await catalog.database.collectionPacks(locale:locale)) ?? [];message=nil}
             .onChange(of:locale){_,_ in category=0}
     }
@@ -231,7 +235,7 @@ struct CollectionPackScreen:View {
     var body:some View {
         VStack(alignment:.leading,spacing:10) {
             Text(pack.name).font(.title3.bold()).padding(.horizontal,20)
-            Text(pack.date+" · 收录 \(entries.count) 种卡片").font(.caption).foregroundStyle(Design.secondary).padding(.horizontal,20).accessibilityIdentifier("collection.cards.count")
+            Text(pack.date+" · 收录 \(entries.count) 种卡牌").font(.caption).foregroundStyle(Design.secondary).padding(.horizontal,20).accessibilityIdentifier("collection.cards.count")
             ScrollView(.horizontal,showsIndicators:false) {
                 HStack(spacing:8) {
                     Button {rarity=""} label:{RarityChip(rarity:.init(code:"全部",name:"全部罕贵度",colorHex:"#9c9c9c"),selected:rarity.isEmpty,filter:true)}

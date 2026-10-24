@@ -7,7 +7,7 @@ struct DeckDetailSheet: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
-                HStack { GlassBackButton(); Text("构筑灵感").font(.headline); Spacer() }
+                HStack { ModalCloseButton(); Text("构筑灵感").font(.headline); Spacer() }
                 Artwork(kind: deck.kind).frame(height: 285).clipShape(RoundedRectangle(cornerRadius: 28))
                 VStack(alignment: .leading, spacing: 10) {
                     Text(deck.name).font(.largeTitle.bold()).foregroundStyle(Design.ink)
@@ -17,12 +17,10 @@ struct DeckDetailSheet: View {
                     Label("\(deck.cards) 张卡牌", systemImage: "rectangle.stack")
                     Label("构筑灵感", systemImage: "sparkles")
                 }.font(.system(size: 12)).foregroundStyle(Design.secondary)
-                Text("围绕核心卡牌找到自己的节奏。探索展开、续航与终场之间的平衡，让每一次决斗都有新的可能。")
-                    .font(.system(size: 15)).lineSpacing(7).foregroundStyle(Design.secondary)
                 AccentButton(title: isSaved ? "已在我的卡组" : "收藏到我的卡组", icon: isSaved ? "checkmark" : "plus") { store.saveDeck(deck) }
                     .disabled(isSaved).opacity(isSaved ? 0.6 : 1)
             }.padding(24)
-        }.background(Design.canvas).presentationDragIndicator(.visible).presentationCornerRadius(32)
+        }.background(Design.canvas).presentationDragIndicator(.visible)
     }
 }
 
@@ -34,7 +32,7 @@ struct CreateDeckSheet: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 26) {
-                HStack { GlassBackButton(); Text("新的构筑").font(.title2.bold()); Spacer() }
+                HStack { ModalCloseButton(); Text("新的构筑").font(.title2.bold()); Spacer() }
                 Artwork(kind: kind).frame(height: 230).clipShape(RoundedRectangle(cornerRadius: 27))
                 Text("给灵感一个名字。").font(.title2.bold())
                 TextField("卡组名称",text:$name).padding(18).background(Design.field,in:RoundedRectangle(cornerRadius:16))
@@ -53,7 +51,7 @@ struct CreateDeckSheet: View {
                 }.disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     .opacity(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.5 : 1)
             }.padding(24)
-        }.background(Design.canvas).presentationDragIndicator(.visible).presentationCornerRadius(32)
+        }.background(Design.canvas).presentationDragIndicator(.visible)
     }
 }
 
@@ -63,7 +61,7 @@ struct MatchDetailSheet: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 25) {
-                HStack { GlassBackButton(); Text("赛程详情").font(.headline); Spacer() }
+                HStack { ModalCloseButton(); Text("赛程详情").font(.headline); Spacer() }
                 Image(systemName: "trophy.fill").font(.system(size: 78, weight: .light))
                     .foregroundStyle(Design.accent.gradient).frame(maxWidth: .infinity).padding(.vertical, 35)
                 Text(match.title).font(.system(size: 30, weight: .bold))
@@ -72,10 +70,10 @@ struct MatchDetailSheet: View {
                     Label(match.place, systemImage: "mappin.and.ellipse")
                     Label(match.tag, systemImage: "flag.checkered")
                 }.font(.subheadline).foregroundStyle(Design.secondary)
-                Text("带上你的卡组，和同好面对面。赛程为原型演示资料，关注操作仅保存在本机。")
+                Text("关注的比赛保存在本机。")
                     .font(.subheadline).lineSpacing(6).foregroundStyle(Design.secondary)
                 AccentButton(title: store.followedMatches.contains(match.id) ? "已关注 · 点击取消" : "关注这场比赛", icon: "bookmark") { store.toggleMatch(match.id) }
             }.padding(24)
-        }.background(Design.canvas).presentationDragIndicator(.visible).presentationCornerRadius(32)
+        }.background(Design.canvas).presentationDragIndicator(.visible)
     }
 }

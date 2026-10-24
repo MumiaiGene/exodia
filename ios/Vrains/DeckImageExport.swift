@@ -181,15 +181,15 @@ struct ImageShareSheet:View {
             layout {
                 Button {sharing=true} label: {
                     Label("分享图片",systemImage:"square.and.arrow.up")
-                        .font(.headline).frame(maxWidth:.infinity,minHeight:54)
-                }.buttonStyle(.borderedProminent).tint(Design.accent).disabled(image==nil)
+                        .font(.headline).frame(maxWidth:.infinity)
+                }.primaryActionStyle().disabled(image==nil)
                     .accessibilityIdentifier(identifier+".image")
                 Button {Task {await save()}} label: {
                     ZStack {
                         Label("保存图片",systemImage:"square.and.arrow.down").opacity(saving ? 0:1)
                         if saving {ProgressView().accessibilityHidden(true)}
-                    }.font(.headline).frame(maxWidth:.infinity,minHeight:54)
-                }.buttonStyle(.bordered).disabled(image==nil || saving)
+                    }.font(.headline).frame(maxWidth:.infinity)
+                }.secondaryActionStyle().disabled(image==nil || saving)
                     .accessibilityLabel(saving ? "正在保存图片":"保存图片").accessibilityIdentifier(identifier+".save-image")
             }
         }.padding(20).frame(maxWidth:760).frame(maxWidth:.infinity).background(.bar)

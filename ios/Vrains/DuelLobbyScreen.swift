@@ -34,17 +34,12 @@ struct DuelLobbyScreen:View {
                     VStack(spacing:12) {
                         Button { duel.startSearch(decks:store.myDecks) } label: {
                             Label("开始匹配",systemImage:"bolt.fill").font(.headline)
-                                .frame(maxWidth:.infinity).padding(.vertical,17)
-                                .foregroundStyle(.white).background(Design.accent,in:RoundedRectangle(cornerRadius:18))
-                        }.buttonStyle(.plain).disabled(duel.configuration(for:store.myDecks)==nil || duel.isSearching)
-                            .opacity(duel.configuration(for:store.myDecks)==nil ? 0.45:1)
-                            .accessibilityIdentifier("duel.match.start")
-                        Text(selectedDeck?.cards==0 ? "这套卡组还没有卡片，请先完善构筑。":"演示匹配 · 将使用演示对手体验进入对战的流程。")
+                                .frame(maxWidth:.infinity)
+
+                        }.primaryActionStyle().disabled(duel.configuration(for:store.myDecks)==nil || duel.isSearching)
+                                .accessibilityIdentifier("duel.match.start")
+                        Text(selectedDeck?.cards==0 ? "这套卡组还没有卡牌，请先完善构筑。":"当前为演示模式，不连接真实玩家。")
                             .font(.footnote).foregroundStyle(Design.secondary).multilineTextAlignment(.center)
-                        Group {
-                            Text("桌宠与场地为外观预览，当前使用模拟对战布局。")
-                                .font(.caption).foregroundStyle(Design.secondary).multilineTextAlignment(.center)
-                        }
                     }
                 }.padding(.horizontal,20).padding(.top,8).padding(.bottom,30)
             }.background(Design.canvas).navigationTitle("决斗").navigationBarTitleDisplayMode(.large)
@@ -60,7 +55,7 @@ struct DuelLobbyScreen:View {
                 .presentationDetents([.height(340)]).presentationDragIndicator(.hidden)
         }
         .alert("无法开始对战",isPresented:Binding(get:{duel.errorMessage != nil},set:{if !$0 {duel.errorMessage=nil}})) {
-            Button("知道了",role:.cancel){duel.errorMessage=nil}
+            Button("好",role:.cancel){duel.errorMessage=nil}
         } message: { Text(duel.errorMessage ?? "") }
     }
 
@@ -107,15 +102,15 @@ private struct DuelSelectionSheet:View {
 
     var body:some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing:14) {
+            List {
+                Section {
                     switch selection {
                     case .deck:
                         if store.myDecks.isEmpty {
                             EmptyState(icon:"rectangle.stack",title:"还没有卡组",subtitle:"先在卡组页创建一套构筑，再回来选择。")
                         }
                         ForEach(store.myDecks) { deck in
-                            option(id:deck.id,name:deck.name,detail:"\(deck.cards) 张 · \(deck.cards==0 ? "待完善":"原型卡组")",symbol:"rectangle.stack.fill",color:0x4F6AAF,selected:duel.preferences.deckID==deck.id) {
+                            option(id:deck.id,name:deck.name,detail:"\(deck.cards) 张 · \(deck.cards==0 ? "待完善":"我的卡组")",symbol:"rectangle.stack.fill",color:0x4F6AAF,selected:duel.preferences.deckID==deck.id) {
                                 duel.preferences.deckID=deck.id
                             }
                         }
@@ -132,11 +127,11 @@ private struct DuelSelectionSheet:View {
                             option(id:server.id,name:server.name,detail:server.rules,symbol:"network",color:0x418A78,selected:duel.preferences.serverID==server.id) {duel.preferences.serverID=server.id}
                         }
                     }
-                    Text(selection == .deck ? "当前卡组是本机原型资料，真实联机还需要完整卡表。":selection == .server ? "这些服务器用于本机演示，不会连接公共对战服务。":"外观示意，仅用于当前模拟布局。")
+                    Text(selection == .server ? "演示服务器不会连接真实玩家。":"所选内容用于演示决斗。")
                         .font(.footnote).foregroundStyle(Design.secondary).frame(maxWidth:.infinity,alignment:.leading).padding(.top,4)
-                }.padding(20)
+                }
             }.background(Design.canvas).navigationTitle(selection.rawValue).navigationBarTitleDisplayMode(.inline)
-                .toolbar { ToolbarItem(placement:.topBarTrailing) { Button("完成"){dismiss()}.accessibilityIdentifier("duel.selection.close") } }
+                .toolbar { ToolbarItem(placement:.cancellationAction) { ModalCloseButton().accessibilityIdentifier("duel.selection.close") } }
         }.presentationDragIndicator(.visible)
     }
 
@@ -144,14 +139,13 @@ private struct DuelSelectionSheet:View {
         Button { action();dismiss() } label: {
             HStack(spacing:15) {
                 Image(systemName:symbol).font(.system(size:25)).foregroundStyle(Color(hex:color))
-                    .frame(width:54,height:64).background(Color(hex:color).opacity(0.1),in:RoundedRectangle(cornerRadius:15))
+                    .frame(width:38,height:44)
                 VStack(alignment:.leading,spacing:6) {
                     Text(name).font(.headline).foregroundStyle(Design.ink)
                     Text(detail).font(.caption).foregroundStyle(Design.secondary)
                 }.frame(maxWidth:.infinity,alignment:.leading)
-                Image(systemName:selected ? "checkmark.circle.fill":"circle").foregroundStyle(selected ? Design.accent:Design.secondary.opacity(0.3))
-            }.padding(16).background(Design.surface,in:RoundedRectangle(cornerRadius:21))
-                .overlay(RoundedRectangle(cornerRadius:21).strokeBorder(selected ? Design.accent.opacity(0.65):.clear,lineWidth:1.5))
+                if selected { Image(systemName:"checkmark").foregroundStyle(Design.accent) }
+            }.padding(.vertical,8).contentShape(Rectangle())
         }.buttonStyle(.plain).accessibilityIdentifier("duel.option.\(id)").accessibilityAddTraits(selected ? .isSelected:[])
     }
 }
@@ -165,8 +159,7 @@ private struct DuelSearchingSheet:View {
             Text(duel.server.rules).font(.subheadline).foregroundStyle(Design.secondary)
             Text("演示匹配，不会连接真实玩家。").font(.footnote).foregroundStyle(Design.secondary)
             Button("取消匹配",role:.cancel){duel.cancelSearch()}
-                .font(.headline).frame(maxWidth:.infinity).padding(.vertical,12)
-                .background(Design.field,in:RoundedRectangle(cornerRadius:14))
+                .font(.headline).frame(maxWidth:.infinity,minHeight:44).secondaryActionStyle()
                 .accessibilityIdentifier("duel.match.cancel")
         }.padding(28).frame(maxWidth:.infinity,maxHeight:.infinity).background(Design.canvas)
     }

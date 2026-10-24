@@ -65,13 +65,13 @@ struct JHSMatchBuilderScreen:View {
                             JHSMatchPriceRangeView(title:"单张价格",draft:$draft.price,ceiling:1000,identifier:String(draft.id))
                         }
                     } header:{
-                        if draft.id==drafts.first?.id {Text("卡片 · 已选 \(selectedCount)/\(drafts.count)")}
+                        if draft.id==drafts.first?.id {Text("卡牌 · 已选 \(selectedCount)/\(drafts.count)")}
                     }
                 }
             }.navigationTitle("设置匹配").navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement:.cancellationAction) {
-                        Button {if hasChanges{confirmingDiscard=true}else{dismiss()}} label:{Image(systemName:"xmark")}
+                        ModalCloseButton(action:{if hasChanges{confirmingDiscard=true}else{dismiss()}})
                             .accessibilityLabel("取消").accessibilityIdentifier("jhs.match.cancel")
                     }
                     ToolbarItem(placement:.topBarTrailing) {
@@ -82,14 +82,14 @@ struct JHSMatchBuilderScreen:View {
                 .safeAreaInset(edge:.bottom,spacing:0) {
                     VStack(spacing:8) {
                         Button {submit()} label:{
-                            Text("开始匹配").font(.headline).frame(maxWidth:.infinity,minHeight:54)
-                        }.buttonStyle(.borderedProminent).tint(Design.accent)
+                            Text("开始匹配").font(.headline).frame(maxWidth:.infinity)
+                        }.primaryActionStyle()
                             .disabled(selectedCount==0 || submitting).accessibilityIdentifier("jhs.match.submit")
                     }.padding(.horizontal,20).padding(.top,12).padding(.bottom,8).background(.bar)
                 }
-                .confirmationDialog("放弃本次设置？",isPresented:$confirmingDiscard,titleVisibility:.visible) {
-                    Button("放弃设置",role:.destructive){dismiss()}
-                    Button("继续设置",role:.cancel){}
+                .alert("放弃本次修改？",isPresented:$confirmingDiscard) {
+                    Button("放弃修改",role:.destructive){dismiss()}
+                    Button("继续编辑",role:.cancel){}
                 }
                 .interactiveDismissDisabled(hasChanges)
                 .alert("未能开始匹配",isPresented:Binding(get:{submitError != nil},set:{if !$0{submitError=nil}})){Button("好",role:.cancel){}}message:{Text(submitError ?? "")}
@@ -190,7 +190,7 @@ struct JHSMatchJobsScreen:View {
     @State private var jobs=JHSMatchJobsStore.shared
     var body:some View {
         List {
-            if jobs.jobs.isEmpty {ContentUnavailableView("还没有匹配任务",systemImage:"list.bullet.rectangle",description:Text("在预购清单中选择卡片并开始匹配。"))}
+            if jobs.jobs.isEmpty {ContentUnavailableView("还没有匹配任务",systemImage:"list.bullet.rectangle",description:Text("在预购清单中选择卡牌并开始匹配。"))}
             ForEach(jobs.jobs){job in
                 NavigationLink {JHSMatchJobScreen(jobID:job.id)} label:{
                     VStack(alignment:.leading,spacing:7) {
@@ -268,8 +268,8 @@ struct JHSMatchJobScreen:View {
                                 if cart.adding==key {ProgressView()}
                                 Image(systemName:cart.added.contains(key) ? "checkmark":"cart.badge.plus")
                                 Text(cart.uncertain.contains(key) ? "查看购物车":cart.added.contains(key) ? "已加入购物车":(cart.confirmed[key]?.isEmpty==false ? "继续加入购物车":"加入购物车"))
-                            }.font(.headline).frame(maxWidth:.infinity,minHeight:54)
-                        }.buttonStyle(.borderedProminent).tint(Design.accent)
+                            }.font(.headline).frame(maxWidth:.infinity)
+                        }.primaryActionStyle()
                             .disabled(cart.adding != nil || cart.added.contains(key))
                             .accessibilityIdentifier("jhs.match.plan.add.\(index)")
                     }
@@ -336,7 +336,7 @@ struct JHSMatchJobScreen:View {
                 VStack(alignment:.leading,spacing:4) {
                     if let counts=job.apiCounts {
                         Text("查询 \(counts.sellerLists) 次卖家列表").accessibilityIdentifier("jhs.match.calls.sellers")
-                        Text("查询 \(counts.cardVersions) 次卡片版本").accessibilityIdentifier("jhs.match.calls.versions")
+                        Text("查询 \(counts.cardVersions) 次卡牌版本").accessibilityIdentifier("jhs.match.calls.versions")
                         Text("查询 \(counts.sellerProfiles) 次卖家资料").accessibilityIdentifier("jhs.match.calls.profiles")
                     } else {Text("接口次数未记录")}
                 }.font(.caption).monospacedDigit().foregroundStyle(.secondary)
@@ -345,7 +345,7 @@ struct JHSMatchJobScreen:View {
                 Divider()
                 Button {conditionsExpanded.toggle()}label:{
                     HStack {
-                        Text("\(job.requests.count) 种卡片 · \(job.requests.reduce(0){$0+$1.quantity}) 张").foregroundStyle(.primary)
+                        Text("\(job.requests.count) 种卡牌 · \(job.requests.reduce(0){$0+$1.quantity}) 张").foregroundStyle(.primary)
                         Spacer()
                         Image(systemName:conditionsExpanded ? "chevron.up":"chevron.down").foregroundStyle(.secondary)
                     }.frame(minHeight:44).contentShape(Rectangle())

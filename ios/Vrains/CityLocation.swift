@@ -131,7 +131,7 @@ private struct CityPickerSheet: View {
             }.navigationTitle("选择地区").navigationBarTitleDisplayMode(.inline)
                 .searchable(text: $search, prompt: "搜索城市")
                 .stableSearchToolbar()
-                .toolbar { ToolbarItem(placement: .topBarLeading) { CompactBackButton() } }
+                .toolbar { ToolbarItem(placement: .topBarLeading) { ModalCloseButton() } }
                 .task { await load() }
         }
     }

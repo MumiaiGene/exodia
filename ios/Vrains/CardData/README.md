@@ -22,7 +22,7 @@ CardData/
 | 文件或目录 | 作用 |
 | --- | --- |
 | `catalog.sqlite` | 卡片属性、各语言文本、别名、卡包、收录、罕贵、禁限卡表和 JHS 版本映射 |
-| `catalog-runtime.sql` | 创建 App 查询使用的视图、资料状态表和索引 |
+| `catalog-runtime.sql` | 创建或迁移 App 查询视图、收录与资料状态表和索引 |
 | `neuron-ja.sqlite` | Neuron 日文资料及卡片、异画与资源文件的映射 |
 | `neuron-index.json` | 卡图下载资源的索引与版本信息 |
 | `NeuronArtworks/` | 按 App 文件命名规则保存的离线 PNG 卡图 |
@@ -39,12 +39,15 @@ CardData/
 `CardDatabase` 打开连接时读取并执行 `catalog-runtime.sql`：
 
 - `app_cards` 将卡片属性、语言文本和别名整理为 App 查询字段，定义名称与效果文本的来源优先级。
-- `app_releases` 综合卡包收录与发售记录，提供各地区已发售的最早收录。
+- `app_releases` 综合卡包收录与发售记录，提供各地区最早收录；日文包括官网已公开但尚未发售的卡，因此新卡可按未来发售日排序。
 - `app_limits` 按日期与赛制选择最新且完整的禁限卡表记录。
+- `pack_members` 保存经过完整列表校验的 CID、次序与罕贵，不伪造卡号；`app_pack_members` 优先使用完整列表，否则显示卡片明细中已知的收录。
+- `sync_resources` 的 `official-db/pack-membership` 保存完整包内卡片数量。单卡明细顺带发现的卡包不视为完整，后续检查更新时会补齐。
+- `sync_resources` 的 `ygocdb/nw-text`、`official-db/cn-text` 分别保存 NW 和官方简中名称、正文、灵摆文本的补齐状态。新卡直接查询官方简中，缺少时查询 NW；简中新卡包发布后逐卡补缺失的官方简中。缺名称、正文或必需的灵摆文本时，下次检查更新继续重试，名称相同也不代表文本完整。
 - `catalog_state` 保存本地资料的版本与检查状态。
 - 索引支持按罕贵和语言查询收录资料。
 
-视图直接查询底层表。SQL 使用 `IF NOT EXISTS`，支持重复执行。
+视图直接查询底层表。打开数据库时在事务内重建需要升级的展示视图，表和索引使用 `IF NOT EXISTS`，支持旧安装升级与重复执行。
 
 ## 资源准备与管理
 

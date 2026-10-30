@@ -86,7 +86,9 @@ actor CardDatabase {
         sqlite3_busy_timeout(pointer,5000)
         try execute("PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL;",database:pointer)
         guard let runtime=Bundle.main.url(forResource:"catalog-runtime",withExtension:"sql",subdirectory:"CardData") else{throw CardCatalogError.database}
-        try execute(String(contentsOf:runtime,encoding:.utf8),database:pointer)
+        do {
+            try execute("BEGIN IMMEDIATE;\n"+String(contentsOf:runtime,encoding:.utf8)+"\nCOMMIT;",database:pointer)
+        } catch {try? execute("ROLLBACK",database:pointer);throw error}
         connection=handle
         // User decks, artwork cache and favorites live outside the retired library.
         if url.lastPathComponent=="Catalog-v2.sqlite" {
@@ -113,7 +115,8 @@ actor CardDatabase {
         func count(_ sql:String)throws->Int64 {let q=try CardStatement(database:db,sql:sql);_ = try q.next();return q.integer(0) ?? 0}
         var result:[CatalogSource:String]=[:]
         result[.cards]="\(try count("SELECT count(*) FROM card_localizations WHERE locale='ja' AND source='official-db'").formatted()) 张日文卡牌 · 官方简中优先"
-        result[.packs]="\(try count("SELECT count(*) FROM packs WHERE locale='ja'").formatted()) 个日文卡包 · \(try count("SELECT count(*) FROM printings WHERE locale='ja'").formatted()) 条收录"
+        result[.packs]="\(try count("SELECT count(*) FROM packs WHERE locale='ja'").formatted()) 个日文卡包 · \(try count("SELECT count(*) FROM app_pack_members WHERE locale='ja'").formatted()) 条收录"
+        result[.cnPacks]="\(try count("SELECT count(*) FROM packs WHERE locale='cn'").formatted()) 个简中卡包 · 官方名称与文本"
         result[.translations]="\(try count("SELECT count(*) FROM card_localizations WHERE source='ygocdb'").formatted()) 条本机翻译"
         result[.jhs]="\(try count("SELECT count(*) FROM jhs_versions").formatted()) 条版本记录 · 待补齐 \(try pendingJHSCardIDs().count) 张卡牌"
         result[.neuron]="本机版本 \(try state("neuron_data_version")) · 仅日文及日文异画"
@@ -240,7 +243,7 @@ actor CardDatabase {
         if !filter.rarity.isEmpty || !filter.rarities.isEmpty {
             var selected=filter.rarities.sorted()
             if !filter.rarity.isEmpty {selected.append(filter.rarity)}
-            clauses.append("EXISTS (SELECT 1 FROM printings p JOIN rarities rr USING(rarity_id) WHERE p.cid=c.cid AND rr.source_rid IN ("+Array(repeating:"?",count:selected.count).joined(separator:",")+"))")
+            clauses.append("EXISTS (SELECT 1 FROM app_pack_members p JOIN rarities rr USING(rarity_id) WHERE p.cid=c.cid AND rr.source_rid IN ("+Array(repeating:"?",count:selected.count).joined(separator:",")+"))")
             values += selected.map(CardSQLValue.text)
         }
         if !filter.printingPack.isEmpty {
@@ -379,14 +382,56 @@ actor CardDatabase {
         while try q.next(){result.append(.init(id:q.text(0)!,locale:locale,name:q.text(1)!,date:q.text(2) ?? "",category:Int(q.text(3) ?? "") ?? 0,group:q.text(4) ?? ""))};return result
     }
     func collectionCards(_ pack:CollectionPack)throws->[CollectionCard] {
-        let q=try CardStatement(database:open(),sql:"SELECT p.cid,c.name,r.source_rid,r.code,COALESCE(l.name,r.code),r.color_hex FROM printings p JOIN app_cards c ON c.cid=p.cid JOIN rarities r USING(rarity_id) LEFT JOIN rarity_localizations l ON l.rarity_id=r.rarity_id AND l.locale='ja' AND l.source=(SELECT z.source FROM rarity_localizations z WHERE z.rarity_id=r.rarity_id AND z.locale='ja' ORDER BY CASE z.source WHEN 'official-db' THEN 0 ELSE 1 END LIMIT 1) WHERE p.locale=? AND p.pid=? ORDER BY p.position,p.card_number,r.display_order DESC")
+        let q=try CardStatement(database:open(),sql:"SELECT p.cid,c.name,r.source_rid,r.code,COALESCE(l.name,r.code),r.color_hex FROM app_pack_members p JOIN app_cards c ON c.cid=p.cid JOIN rarities r USING(rarity_id) LEFT JOIN rarity_localizations l ON l.rarity_id=r.rarity_id AND l.locale='ja' AND l.source=(SELECT z.source FROM rarity_localizations z WHERE z.rarity_id=r.rarity_id AND z.locale='ja' ORDER BY CASE z.source WHEN 'official-db' THEN 0 ELSE 1 END LIMIT 1) WHERE p.locale=? AND p.pid=? ORDER BY p.position,r.display_order DESC")
         try q.bind([.text(pack.locale),.text(pack.id)]);var result:[CollectionCard]=[],index:[Int64:Int]=[:]
         while try q.next(){let cid=q.integer(0)!,rarity=CollectionRarity(code:q.text(3)!,name:q.text(4)!,colorHex:q.text(5),rid:q.text(2))
             if let i=index[cid]{if !result[i].rarities.contains(rarity){result[i].rarities.append(rarity)}}
             else{index[cid]=result.count;result.append(.init(id:cid,name:q.text(1)!,rarities:[rarity]))}
         };return result
     }
-    func collectionCardsComplete(_ pack:CollectionPack)throws->Bool {try !collectionCards(pack).isEmpty}
+    func collectionCardsComplete(_ pack:CollectionPack)throws->Bool {try completePackIDs(locale:pack.locale).contains(pack.id)}
+    func completePackIDs(locale:String)throws->Set<String> {
+        let q=try CardStatement(database:open(),sql:"SELECT k.pid,s.coverage_json,(SELECT count(DISTINCT m.cid) FROM app_pack_members m WHERE m.locale=k.locale AND m.pid=k.pid) FROM packs k JOIN sync_resources s ON s.source='official-db' AND s.resource_type='pack-membership' AND s.resource_key=k.locale||':'||k.pid WHERE k.locale=? AND s.status='complete'")
+        try q.bind([.text(locale)]);var result=Set<String>()
+        while try q.next() {
+            guard let json=q.text(1)?.data(using:.utf8),let coverage=try JSONSerialization.jsonObject(with:json) as? [String:Any],
+                  let total=coverage["total"] as? Int,total>0,Int64(total)==q.integer(2) else{continue}
+            result.insert(q.text(0)!)
+        };return result
+    }
+    private func completeText(_ cid:Int64,source:String?=nil,db:OpaquePointer)throws->Bool {
+        let q=try CardStatement(database:db,sql:"SELECT 1 FROM card_localizations l JOIN cards c USING(cid) WHERE l.cid=? AND l.locale='zh-Hans' AND l.source "+(source == nil ? "IN ('official-db','ygocdb')":"=?")+" AND trim(l.name)!='' AND trim(l.description)!='' AND ((c.type_bits & 16777216)=0 OR trim(l.pendulum_description)!='') LIMIT 1")
+        try q.bind([.integer(cid)]+(source.map{[.text($0)]} ?? []));return try q.next()
+    }
+    func hasCompleteOfficialText(cid:Int64)throws->Bool {try completeText(cid,source:"official-db",db:open())}
+    func hasCompleteChineseText(cid:Int64)throws->Bool {try completeText(cid,db:open())}
+    func pendingNWCardIDs()throws->[Int64] {
+        let db=try open(),q=try CardStatement(database:db,sql:"SELECT c.cid FROM cards c WHERE EXISTS(SELECT 1 FROM card_localizations l WHERE l.cid=c.cid AND l.locale='ja') AND NOT EXISTS(SELECT 1 FROM card_localizations l WHERE l.cid=c.cid AND l.locale='zh-Hans' AND l.source IN ('official-db','ygocdb') AND trim(l.name)!='' AND trim(l.description)!='' AND ((c.type_bits & 16777216)=0 OR trim(l.pendulum_description)!='')) ORDER BY c.cid")
+        var result:[Int64]=[];while try q.next(){result.append(q.integer(0)!)};return result
+    }
+    func pendingOfficialTextIDs()throws->[Int64] {
+        let db=try open(),q=try CardStatement(database:db,sql:"SELECT CAST(resource_key AS INTEGER) FROM sync_resources WHERE source='official-db' AND resource_type='cn-text' AND status!='complete' ORDER BY CAST(resource_key AS INTEGER)")
+        var result:[Int64]=[];while try q.next(){let cid=q.integer(0)!;if try !completeText(cid,source:"official-db",db:db){result.append(cid)}};return result
+    }
+    private func recordTextState(cid:Int64,official:Bool,stamp:String,db:OpaquePointer)throws {
+        let complete=try completeText(cid,source:official ? "official-db":nil,db:db)
+        let q=try CardStatement(database:db,sql:"INSERT INTO sync_resources(source,resource_type,resource_key,status,last_attempt_at,last_success_at,attempts) VALUES (?,?,?,?,?,?,1) ON CONFLICT(source,resource_type,resource_key) DO UPDATE SET status=excluded.status,last_attempt_at=excluded.last_attempt_at,last_success_at=COALESCE(excluded.last_success_at,sync_resources.last_success_at),attempts=sync_resources.attempts+1")
+        try q.execute([.text(official ? "official-db":"ygocdb"),.text(official ? "cn-text":"nw-text"),.text(String(cid)),.text(complete ? "complete":"partial"),.text(stamp),complete ? .text(stamp):.null])
+    }
+    private func saveTranslation(_ update:CatalogTranslationRefresh,stamp:String,db:OpaquePointer)throws {
+        let q=try CardStatement(database:db,sql:"INSERT OR REPLACE INTO card_localizations VALUES (?,?,?,?,?,?,?,?,?,?,?,?)")
+        for (source,text) in [("official-db",update.official),("ygocdb",update.nw)] {
+            guard let text,let name=text["name"],!name.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty,let body=text["text"],!body.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty else{continue}
+            let card=try CardStatement(database:db,sql:"SELECT type_bits FROM cards WHERE cid=?")
+            try card.bind([.integer(update.cid)]);guard try card.next() else{throw CardCatalogError.invalidData}
+            if (card.integer(0) ?? 0) & CardVocabulary.pendulum != 0 && (text["pdesc"] ?? "").trimmingCharacters(in:.whitespacesAndNewlines).isEmpty {continue}
+            try q.execute([.integer(update.cid),.text("zh-Hans"),.text(source),.text(name),.null,.text(text["types"] ?? ""),.text(""),.text(body),.text(text["pdesc"] ?? ""),.text(""),.null,.text(stamp)])
+            let alias=try CardStatement(database:db,sql:"INSERT OR IGNORE INTO card_aliases(cid,locale,source,name,normalized_name,kind) VALUES (?,'zh-Hans',?,?,?,'translation')")
+            try alias.execute([.integer(update.cid),.text(source == "official-db" ? "sc_name":"nwbbs_n"),.text(name),.text(CardVocabulary.normalize(name))])
+        }
+        try recordTextState(cid:update.cid,official:false,stamp:stamp,db:db)
+        if update.requiresOfficial {try recordTextState(cid:update.cid,official:true,stamp:stamp,db:db)}
+    }
     func banlist(format:CardFormat,date:String?=nil)throws->BanlistSnapshot? {
         let db=try open(),versions=try CardStatement(database:open(),sql:"SELECT effective_date FROM banlists WHERE format=? AND completeness='complete' ORDER BY effective_date DESC")
         try versions.bind([.text(format.rawValue)]);var dates:[String]=[];while try versions.next(){dates.append(versions.text(0)!)}
@@ -414,23 +459,38 @@ actor CardDatabase {
             if nameChanged || textChanged || pendulumChanged {changed.append(row.cid)}
         };return changed
     }
-    func applyUpdate(cards:[Data],packs:[CollectionPack],members:[String:[CollectionCard]],banlists:[BanlistSnapshot],neuronVersion:String,jhs:[CatalogJHSRefresh]=[])throws {
+    func applyUpdate(cards:[Data],packs:[CollectionPack],members:[String:[CollectionCard]],banlists:[BanlistSnapshot],neuronVersion:String,jhs:[CatalogJHSRefresh]=[],translations:[CatalogTranslationRefresh]=[])throws {
         let db=try open(),stamp=ISO8601DateFormatter().string(from:.now)
         try execute("BEGIN IMMEDIATE",database:db)
         do {
             for bytes in cards {try saveCard(bytes,stamp:stamp,db:db)}
+            for update in translations {try saveTranslation(update,stamp:stamp,db:db)}
             for pack in packs {
                 let category=String(pack.category)
                 let categoryRow=try CardStatement(database:db,sql:"INSERT OR IGNORE INTO pack_categories VALUES (?,?,?,?,?)")
                 try categoryRow.execute([.text(pack.locale),.text(category),.text(pack.group),.text(pack.group),.integer(Int64(pack.category))])
                 let q=try CardStatement(database:db,sql:"INSERT INTO packs VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(locale,pid) DO UPDATE SET name=excluded.name,release_date=excluded.release_date,category_code=excluded.category_code,updated_at=excluded.updated_at")
                 try q.execute([.text(pack.locale),.text(pack.id),.text(pack.name),.text(pack.date),.text(category),.text(pack.group),.text(CollectionService.catalogURL(pack.locale).absoluteString),.text(stamp)])
-                // Full card detail rows carry the official card number and rid; no placeholder printings.
-                if let expected=members[pack.id] {
-                    let check=try CardStatement(database:db,sql:"SELECT COUNT(DISTINCT cid) FROM printings WHERE locale=? AND pid=?")
-                    try check.bind([.text(pack.locale),.text(pack.id)]);_ = try check.next()
-                    guard check.integer(0)==Int64(expected.count) else{throw CardCatalogError.invalidData}
+                guard let expected=members[pack.locale+":"+pack.id] ?? members[pack.id],!expected.isEmpty,
+                      Set(expected.map(\.id)).count==expected.count else{throw CardCatalogError.invalidData}
+                let remove=try CardStatement(database:db,sql:"DELETE FROM pack_members WHERE locale=? AND pid=?")
+                try remove.execute([.text(pack.locale),.text(pack.id)])
+                for (position,card) in expected.enumerated() {
+                    guard !card.rarities.isEmpty else{throw CardCatalogError.invalidData}
+                    for rarity in card.rarities {
+                        guard let rid=rarity.rid,!rid.isEmpty else{throw CardCatalogError.invalidData}
+                        let key="konami:ocg:rid:"+rid
+                        let rare=try CardStatement(database:db,sql:"INSERT OR IGNORE INTO rarities VALUES (?,'official-db',?,?,NULL,NULL,1)")
+                        try rare.execute([.text(key),.text(rid),.text(rarity.code)])
+                        let local=try CardStatement(database:db,sql:"INSERT OR REPLACE INTO rarity_localizations VALUES (?,?,'official-db',?,?)")
+                        try local.execute([.text(key),.text(pack.locale == "cn" ? "zh-Hans":"ja"),.text(rarity.code),.text(rarity.name)])
+                        let member=try CardStatement(database:db,sql:"INSERT INTO pack_members VALUES (?,?,?,?,?)")
+                        try member.execute([.text(pack.locale),.text(pack.id),.integer(card.id),.text(key),.integer(Int64(position))])
+                    }
+                    if pack.locale == "cn" {try recordTextState(cid:card.id,official:true,stamp:stamp,db:db)}
                 }
+                let sync=try CardStatement(database:db,sql:"INSERT INTO sync_resources(source,resource_type,resource_key,status,coverage_json,last_attempt_at,last_success_at,attempts) VALUES ('official-db','pack-membership',?,'complete',?,?,?,1) ON CONFLICT(source,resource_type,resource_key) DO UPDATE SET status='complete',coverage_json=excluded.coverage_json,last_attempt_at=excluded.last_attempt_at,last_success_at=excluded.last_success_at,attempts=sync_resources.attempts+1")
+                try sync.execute([.text(pack.locale+":"+pack.id),.text("{\"total\":\(expected.count)}"),.text(stamp),.text(stamp)])
             }
             for snapshot in banlists.sorted(by:{$0.date<$1.date}) {
                 let row=try CardStatement(database:db,sql:"INSERT OR REPLACE INTO banlists VALUES (?,?,?,?,?,'complete')")
@@ -494,13 +554,14 @@ actor CardDatabase {
         if let cn=raw["official_cn"] as? [String:String],let name=cn["name"],let desc=cn["text"] {
             try localization.execute([.integer(card.cid),.text("zh-Hans"),.text("official-db"),.text(name),.null,.text(""),.text(""),.text(desc),.text(cn["pdesc"] ?? ""),.text(""),.null,.text(stamp)])
         }
-        if let nw=raw["nwbbs_n"] as? String,!nw.isEmpty,let body=raw["nw_text"] as? [String:Any],let desc=body["desc"] as? String,!desc.isEmpty {
+        if let nw=raw["nwbbs_n"] as? String,!nw.isEmpty,let body=raw["nw_text"] as? [String:Any],let desc=body["desc"] as? String,!desc.isEmpty,(!pendulum || !(body["pdesc"] as? String ?? "").trimmingCharacters(in:.whitespacesAndNewlines).isEmpty) {
             try localization.execute([.integer(card.cid),.text("zh-Hans"),.text("ygocdb"),.text(nw),.null,.text(body["types"] as? String ?? ""),.text(""),.text(desc),.text(body["pdesc"] as? String ?? ""),.text(""),.null,.text(stamp)])
         }
         let alias=try CardStatement(database:db,sql:"INSERT OR IGNORE INTO card_aliases(cid,locale,source,name,normalized_name,kind) VALUES (?,?,?,?,?,'translation')")
         for key in ["jp_name","jp_ruby","sc_name","nwbbs_n","cn_name","en_name","cnocg_n"] {
             if let name=raw[key] as? String,!name.isEmpty {try alias.execute([.integer(card.cid),.text(key.hasPrefix("jp") ? "ja":key=="en_name" ? "en":"zh-Hans"),.text(key),.text(name),.text(CardVocabulary.normalize(name))])}
         }
+        try recordTextState(cid:card.cid,official:false,stamp:stamp,db:db)
         for (position,row) in (official["printings"] as? [[String:Any]] ?? []).enumerated() {
             guard let pid=row["pid"] as? String,let name=row["pack"] as? String,let number=row["number"] as? String,let code=row["rarity"] as? String,let rid=row["rid"] as? String else{throw CardCatalogError.invalidData}
             let key="konami:ocg:rid:"+rid
@@ -508,6 +569,9 @@ actor CardDatabase {
             let local=try CardStatement(database:db,sql:"INSERT OR REPLACE INTO rarity_localizations VALUES (?,'ja','official-db',?,?)");try local.execute([.text(key),.text(code),.text(row["rarity_name"] as? String ?? code)])
             let pack=try CardStatement(database:db,sql:"INSERT OR IGNORE INTO packs VALUES ('ja',?,?,?,'unknown',NULL,?,?)")
             try pack.execute([.text(pid),.text(name),.text(row["date"] as? String ?? ""),.text(CollectionService.catalogURL("ja").absoluteString),.text(stamp)])
+            // A newly observed member or rarity invalidates any older full-list snapshot.
+            let invalidate=try CardStatement(database:db,sql:"UPDATE sync_resources SET status='partial' WHERE source='official-db' AND resource_type='pack-membership' AND resource_key=? AND NOT EXISTS(SELECT 1 FROM app_pack_members WHERE locale='ja' AND pid=? AND cid=? AND rarity_id=?)")
+            try invalidate.execute([.text("ja:"+pid),.text(pid),.integer(card.cid),.text(key)])
             let printing=try CardStatement(database:db,sql:"INSERT OR IGNORE INTO printings(locale,pid,cid,card_number,number_status,rarity_id,position,source_url,fetched_at) VALUES ('ja',?,?,?,?,?,?,?,?)")
             try printing.execute([.text(pid),.integer(card.cid),.text(number),.text(number.isEmpty ? "source-empty":"known"),.text(key),.integer(Int64(position)),.text("\(PrivateConfiguration.value("officialDatabaseOrigin"))/yugiohdb/card_search.action?ope=2&cid=\(card.cid)&request_locale=ja"),.text(stamp)])
         }

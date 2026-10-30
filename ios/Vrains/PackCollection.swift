@@ -135,15 +135,17 @@ enum CollectionParser {
         for row in rows {
             guard let cid=OfficialHTML.groups(#"class="cid"\s+value="(\d+)""#,in:row).first?.first.flatMap(Int64.init) else{continue}
             count+=1
-            if seen.insert(cid).inserted {
-                let name=OfficialHTML.groups(#"<span class="card_name">(.*?)</span>"#,in:row).first?.first.map(OfficialHTML.clean) ?? "卡牌 \(cid)"
-                let rarities=OfficialHTML.groups(#"<div class="lr_icon[^\"]*\brid_([0-9]+)\b[^\"]*"([^>]*)>\s*<p>(.*?)</p>\s*<span[^>]*>(.*?)</span>"#,in:row).map{item in
-                    CollectionRarity(code:OfficialHTML.clean(item[2]),name:OfficialHTML.clean(item[3]),colorHex:OfficialHTML.groups(#"background-color:\s*(#[0-9a-fA-F]{6})"#,in:item[1]).first?.first,rid:item[0])
-                }
-                result.append(.init(id:cid,name:name,rarities:rarities.reduce(into:[]){if !$0.contains($1){$0.append($1)}}))
+            let name=OfficialHTML.groups(#"<span class="card_name">(.*?)</span>"#,in:row).first?.first.map(OfficialHTML.clean) ?? "卡牌 \(cid)"
+            let rarities=OfficialHTML.groups(#"<div class="lr_icon[^\"]*\brid_([0-9]+)\b[^\"]*"([^>]*)>\s*<p>(.*?)</p>\s*<span[^>]*>(.*?)</span>"#,in:row).map{item in
+                CollectionRarity(code:OfficialHTML.clean(item[2]),name:OfficialHTML.clean(item[3]),colorHex:OfficialHTML.groups(#"background-color:\s*(#[0-9a-fA-F]{6})"#,in:item[1]).first?.first,rid:item[0])
+            }
+            guard !rarities.isEmpty else{throw CardCatalogError.invalidData}
+            if seen.insert(cid).inserted {result.append(.init(id:cid,name:name,rarities:rarities.reduce(into:[]){if !$0.contains($1){$0.append($1)}}))}
+            else if let index=result.firstIndex(where:{$0.id==cid}) {
+                for rarity in rarities where !result[index].rarities.contains(rarity) {result[index].rarities.append(rarity)}
             }
         }
-        guard !result.isEmpty,let total,count>=total else{throw CardCatalogError.invalidData};return result
+        guard !result.isEmpty,let total,count==total else{throw CardCatalogError.invalidData};return result
     }
     static func chineseCards(_ data:Data) throws ->[CollectionCard] {
         let root=try object(data)

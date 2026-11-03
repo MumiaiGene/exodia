@@ -225,6 +225,7 @@ struct OfficialPrinting: Identifiable, Sendable {
     let rarityName: String
     let date: String?
     let packName: String
+    var rarityID: String? = nil
     var id: String { "\(cid):\(pid):\(number):\(rarity)" }
 }
 struct OfficialDetailMetadata: Sendable {

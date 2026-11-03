@@ -1,4 +1,18 @@
 CREATE TABLE IF NOT EXISTS catalog_state (key TEXT PRIMARY KEY,value TEXT NOT NULL);
+-- Verified source identifiers. The target printing is checked when matching.
+CREATE TABLE IF NOT EXISTS jhs_printing_aliases (
+ cid INTEGER NOT NULL,market_number TEXT NOT NULL,pid TEXT NOT NULL,official_number TEXT NOT NULL,
+ evidence TEXT NOT NULL,PRIMARY KEY(cid,market_number,pid,official_number)
+);
+INSERT OR IGNORE INTO jhs_printing_aliases VALUES
+ (4041,'JAS1-JP000','1000009611000','YAS1-JPP01','JHS versions 513000, 513001; Konami Japanese card detail CID 4041'),
+ (4088,'JAS2-JP000','1000009612000','YAS2-JPP01','JHS versions 513002, 513003; Konami Japanese card detail CID 4088'),
+ (4007,'JAS3-JP000','1000009613000','YAS3-JPP01','JHS versions 513004, 513005; Konami Japanese card detail CID 4007');
+-- Persist expectations beyond the recent-pack discovery window until covered.
+CREATE TABLE IF NOT EXISTS jhs_expected_printings (
+ cid INTEGER NOT NULL REFERENCES cards,pid TEXT NOT NULL,rarity_id TEXT NOT NULL REFERENCES rarities,
+ PRIMARY KEY(cid,pid,rarity_id)
+);
 DROP VIEW IF EXISTS app_cards;
 CREATE VIEW app_cards AS
 SELECT c.cid,CAST(NULLIF(c.passcode,'') AS INTEGER) AS passcode,

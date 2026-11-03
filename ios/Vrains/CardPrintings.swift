@@ -34,6 +34,62 @@ struct CardPrinting: Identifiable, Hashable, Sendable {
     }
 }
 
+/// Market annotations describe artwork/region, not a different printed card number.
+/// Never normalize unnumbered products: their parenthesis may be the only identity.
+enum PrintingIdentity {
+    static let baselineDate="2026-10-20"
+    static func rarity(_ value:String)->String {
+        value.replacingOccurrences(of:#"[（(](?:彩色|黑白|异画)[）)]$"#,with:"",options:.regularExpression)
+    }
+    static func number(_ value:String)->String {
+        let value=value.precomposedStringWithCompatibilityMapping.uppercased().trimmingCharacters(in:.whitespacesAndNewlines)
+        guard let range=value.range(of:#"^[A-Z0-9]+-(?:JP|EN|AE|SC|KR|JPA|JPB|JPC)[A-Z0-9]+|^[A-Z0-9]+-[0-9]+"#,options:.regularExpression) else{return value}
+        return String(value[range])
+    }
+    static func candidates(_ version:CardPrinting,official:[OfficialPrinting],aliases:[JHSPrintingAlias])->[OfficialPrinting] {
+        let key=number(version.number)
+        let exact=official.filter{!$0.number.isEmpty && number($0.number)==key}
+        if !exact.isEmpty {return exact}
+        return official.filter { printing in
+            aliases.contains {
+                $0.marketNumber == key && $0.cid == printing.cid
+                    && $0.pid == printing.pid && $0.officialNumber == number(printing.number)
+            }
+        }
+    }
+}
+
+struct JHSPrintingAlias:Sendable {
+    let cid:Int64
+    let marketNumber:String
+    let pid:String
+    let officialNumber:String
+}
+
+struct CatalogJHSLookup:Sendable {
+    var official:[OfficialPrinting]=[]
+    var expected:Set<String>=[]
+    var rarityIDs:[String:Set<String>]=[:]
+    var aliases:[JHSPrintingAlias]=[]
+    var numbers:[String] {
+        let scoped=official.filter{!$0.number.isEmpty && expected.contains($0.pid+":"+($0.rarityID ?? ""))}
+        return scoped.isEmpty ? Array(official.filter{!$0.number.isEmpty}.prefix(1)).map(\.number):scoped.map(\.number)
+    }
+    func covers(_ versions:[CardPrinting])->Bool {
+        guard !expected.isEmpty else{return !versions.isEmpty}
+        var covered=Set<String>()
+        for version in versions {
+            let candidates=PrintingIdentity.candidates(version,official:official,aliases:aliases)
+            guard Set(candidates.map(\.pid)).count==1 else{continue}
+            let ids=rarityIDs[version.rarity] ?? rarityIDs[PrintingIdentity.rarity(version.rarity)] ?? []
+            for row in candidates {
+                if let rid=row.rarityID,ids.contains(rid) {covered.insert(row.pid+":"+rid)}
+            }
+        }
+        return expected.isSubset(of:covered)
+    }
+}
+
 struct CardPrintingDisplay: Identifiable, Sendable {
     let id: String
     let versionID: Int64

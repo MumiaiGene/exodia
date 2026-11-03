@@ -410,9 +410,30 @@ def restore_artworks(root, force=False):
     print('Offline artwork restoration complete: {} images'.format(result['count']))
 
 
+def validate_catalog_baseline(root):
+    """Never ship the uncorrected 10/20 snapshot under a new executable."""
+    folder = root / 'ios/Vrains/CardData'
+    database = folder / 'catalog.sqlite'
+    links = folder / 'catalog-baseline-links.json'
+    if not database.is_file() or not links.is_file():
+        raise RuntimeError('Missing catalog baseline files; restore the matching CardData resource bundle before building')
+    with sqlite3.connect(database.as_uri() + '?mode=ro', uri=True) as connection:
+        state = dict(connection.execute('SELECT key,value FROM catalog_state'))
+        if state.get('catalog_baseline_date') != '2026-10-20' or state.get('catalog_baseline_repair_v2') != '1':
+            raise RuntimeError('Catalog baseline has not been repaired')
+        if state.get('catalog_baseline_links_sha256') != digest(links):
+            raise RuntimeError('Catalog baseline corrections do not match the prepared snapshot')
+        if connection.execute('PRAGMA quick_check').fetchone()[0] != 'ok' or connection.execute('PRAGMA foreign_key_check').fetchone():
+            raise RuntimeError('Catalog baseline integrity check failed')
+        old_pending = connection.execute("SELECT count(*) FROM sync_resources s WHERE s.source='jhs' AND s.resource_type='card_versions' AND s.status!='complete' AND NOT EXISTS(SELECT 1 FROM jhs_expected_printings e WHERE e.cid=CAST(s.resource_key AS INTEGER))").fetchone()[0]
+        if old_pending:
+            raise RuntimeError('Catalog baseline would enqueue old cards on a fresh install')
+
+
 def embed_config(root):
     """Internal Xcode build phase; runtime resources are copied by Xcode itself."""
     config = private_config_path(root)
+    validate_catalog_baseline(root)
     profile = Path(os.environ.get('JHS_PROFILE_SOURCE', root / '.private/jhs-profile.json'))
     validate_private_config(config)
     data = json.loads(profile.read_text())

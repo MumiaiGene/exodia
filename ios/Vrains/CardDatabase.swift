@@ -87,7 +87,10 @@ actor CardDatabase {
         try execute("PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL;",database:pointer)
         guard let runtime=Bundle.main.url(forResource:"catalog-runtime",withExtension:"sql",subdirectory:"CardData") else{throw CardCatalogError.database}
         do {
-            try execute("BEGIN IMMEDIATE;\n"+String(contentsOf:runtime,encoding:.utf8)+"\nCOMMIT;",database:pointer)
+            try execute("BEGIN IMMEDIATE;\n"+String(contentsOf:runtime,encoding:.utf8),database:pointer)
+            try repairBaseline(db:pointer)
+            try repairLookupPriority(db:pointer)
+            try execute("COMMIT;",database:pointer)
         } catch {try? execute("ROLLBACK",database:pointer);throw error}
         connection=handle
         // User decks, artwork cache and favorites live outside the retired library.
@@ -110,6 +113,35 @@ actor CardDatabase {
         let fk=try CardStatement(database:p,sql:"PRAGMA foreign_key_check")
         guard try !fk.next() else{throw CardCatalogError.invalidData}
     }
+    /// The bundled snapshot is authoritative through its release-date baseline.
+    /// Apply offline corrections without replacing newer installed cards or market versions.
+    private func repairBaseline(db:OpaquePointer,linksURL:URL?=Bundle.main.url(forResource:"catalog-baseline-links",withExtension:"json",subdirectory:"CardData"))throws {
+        let migration=try CardStatement(database:db,sql:"SELECT 1 FROM catalog_state WHERE key='catalog_baseline_repair_v2'")
+        if try migration.next(){return}
+        try execute("UPDATE cards SET passcode=NULL WHERE passcode IS NOT NULL AND (length(passcode)>8 OR passcode GLOB '*[^0-9]*' OR CAST(passcode AS INTEGER)<=0); INSERT OR IGNORE INTO sync_resources(source,resource_type,resource_key,status,last_success_at,attempts) SELECT source,'card_versions',resource_key,status,last_success_at,attempts FROM sync_resources WHERE source='jhs' AND resource_type='card-versions';",database:db)
+        // Undo v1's 90-day rescan. Expectations after the baseline remain durable.
+        let cutoff=PrintingIdentity.baselineDate
+        try execute("DELETE FROM jhs_expected_printings WHERE pid IN (SELECT pid FROM packs WHERE locale='ja' AND release_date<='\(cutoff)'); INSERT OR IGNORE INTO jhs_expected_printings SELECT DISTINCT m.cid,m.pid,m.rarity_id FROM app_pack_members m JOIN packs k ON k.locale=m.locale AND k.pid=m.pid WHERE m.locale='ja' AND k.release_date>'\(cutoff)'; UPDATE sync_resources SET status='complete',next_retry_at=NULL,last_error=NULL WHERE source='jhs' AND resource_type='card_versions' AND resource_key IN (SELECT resource_key FROM sync_resources WHERE source='jhs' AND resource_type='card-versions' AND status='complete') AND NOT EXISTS(SELECT 1 FROM jhs_expected_printings e WHERE e.cid=CAST(resource_key AS INTEGER));",database:db)
+        // Deployed v1 devices may have wrong complete states or a long backoff for
+        // post-baseline packs. Recheck only those packs, once, ahead of baseline data.
+        try execute("INSERT OR IGNORE INTO sync_resources(source,resource_type,resource_key,status,attempts) SELECT DISTINCT 'jhs','card_versions',CAST(cid AS TEXT),'partial',0 FROM jhs_expected_printings; UPDATE sync_resources SET status='partial',next_retry_at=NULL WHERE source='jhs' AND resource_type='card_versions' AND resource_key IN (SELECT CAST(cid AS TEXT) FROM jhs_expected_printings);",database:db)
+        // Resolve using installed natural keys. Printing IDs may differ from the bundle.
+        guard let url=linksURL else{throw CardCatalogError.invalidData}
+        do {
+            let rows=try JSONDecoder().decode([BaselineLink].self,from:Data(contentsOf:url))
+            let q=try CardStatement(database:db,sql:"INSERT OR IGNORE INTO printing_jhs_links SELECT p.printing_id,v.jhs_version_id,'baseline-number+rarity','verified','{}',? FROM printings p JOIN jhs_versions v ON v.jhs_version_id=? AND v.jhs_card_id=? JOIN jhs_card_mappings m ON m.cid=p.cid AND m.jhs_card_id=v.jhs_card_id AND m.match_status='verified' WHERE p.cid=? AND p.locale='ja' AND p.pid=? AND p.card_number=? AND p.rarity_id=?")
+            for row in rows {try q.execute([.text("baseline-v2"),.integer(row.version),.integer(row.card),.integer(row.cid),.text(row.pid),.text(row.number),.text(row.rarity)])}
+        }
+        try execute("INSERT OR REPLACE INTO catalog_state VALUES ('catalog_baseline_date','\(cutoff)'); INSERT INTO catalog_state VALUES ('catalog_baseline_repair_v2','1');",database:db)
+    }
+    private struct BaselineLink:Decodable {let version:Int64;let card:Int64;let cid:Int64;let pid:String;let number:String;let rarity:String}
+    private func repairLookupPriority(db:OpaquePointer)throws {
+        let q=try CardStatement(database:db,sql:"SELECT 1 FROM catalog_state WHERE key='jhs_lookup_priority_v1'")
+        guard try !q.next() else{return}
+        // Old broad-name searches (notably 秋) may be in a long backoff. Permit
+        // one immediate retry with the new order, without requeuing complete cards.
+        try execute("UPDATE sync_resources SET next_retry_at=NULL WHERE source='jhs' AND resource_type='card_versions' AND status!='complete' AND EXISTS(SELECT 1 FROM jhs_expected_printings e WHERE e.cid=CAST(resource_key AS INTEGER)); INSERT INTO catalog_state VALUES ('jhs_lookup_priority_v1','1');",database:db)
+    }
     func updateSourceOverview()throws->[CatalogSource:String] {
         let db=try open()
         func count(_ sql:String)throws->Int64 {let q=try CardStatement(database:db,sql:sql);_ = try q.next();return q.integer(0) ?? 0}
@@ -118,7 +150,7 @@ actor CardDatabase {
         result[.packs]="\(try count("SELECT count(*) FROM packs WHERE locale='ja'").formatted()) 个日文卡包 · \(try count("SELECT count(*) FROM app_pack_members WHERE locale='ja'").formatted()) 条收录"
         result[.cnPacks]="\(try count("SELECT count(*) FROM packs WHERE locale='cn'").formatted()) 个简中卡包 · 官方名称与文本"
         result[.translations]="\(try count("SELECT count(*) FROM card_localizations WHERE source='ygocdb'").formatted()) 条本机翻译"
-        result[.jhs]="\(try count("SELECT count(*) FROM jhs_versions").formatted()) 条版本记录 · 待补齐 \(try pendingJHSCardIDs().count) 张卡牌"
+        result[.jhs]="\(try count("SELECT count(*) FROM jhs_versions").formatted()) 条版本记录 · 待补齐 \(try pendingJHSCardIDs(dueOnly:false).count) 张卡牌"
         result[.neuron]="本机版本 \(try state("neuron_data_version")) · 仅日文及日文异画"
         for format in CardFormat.allCases {let snapshot=try banlist(format:format);result[.banlist(format)]=snapshot.map{"当期 \($0.date) · \($0.versions.count) 期版本"} ?? "尚无本机资料"}
         return result
@@ -330,9 +362,16 @@ actor CardDatabase {
             while try q.next(){result.insert("cid:\(q.integer(0)!)");found=true};if !found{result.insert(key)}
         };return result
     }
-    func pendingJHSCardIDs()throws->[Int64] {
-        let q=try CardStatement(database:open(),sql:"SELECT CAST(resource_key AS INTEGER) FROM sync_resources WHERE source='jhs' AND resource_type='card_versions' AND status!='complete' ORDER BY CAST(resource_key AS INTEGER)")
+    func pendingJHSCardIDs(dueOnly:Bool=true)throws->[Int64] {
+        let condition=dueOnly ? "(status!='complete' OR EXISTS(SELECT 1 FROM jhs_expected_printings e WHERE e.cid=CAST(resource_key AS INTEGER))) AND (next_retry_at IS NULL OR next_retry_at<=strftime('%Y-%m-%dT%H:%M:%SZ','now'))":"status!='complete'"
+        let q=try CardStatement(database:open(),sql:"SELECT CAST(resource_key AS INTEGER) FROM sync_resources WHERE source='jhs' AND resource_type='card_versions' AND "+condition+" ORDER BY CASE status WHEN 'complete' THEN 1 ELSE 0 END,(SELECT max(k.release_date) FROM jhs_expected_printings e JOIN packs k ON k.locale='ja' AND k.pid=e.pid WHERE e.cid=CAST(resource_key AS INTEGER)) DESC,CAST(resource_key AS INTEGER) DESC")
         var ids:[Int64]=[];while try q.next(){if let cid=q.integer(0),cid>0 {ids.append(cid)}};return ids
+    }
+    func pendingArtworkCardIDs(dueOnly:Bool=true)throws->[Int64] {
+        let due=dueOnly ? " AND (s.next_retry_at IS NULL OR s.next_retry_at<=strftime('%Y-%m-%dT%H:%M:%SZ','now'))":""
+        let q=try CardStatement(database:open(),sql:"SELECT DISTINCT m.cid FROM app_pack_members m JOIN packs k ON k.locale=m.locale AND k.pid=m.pid LEFT JOIN sync_resources s ON s.source='official-db' AND s.resource_type='printing-artworks' AND s.resource_key=CAST(m.cid AS TEXT) WHERE m.locale='ja' AND k.release_date>? AND NOT EXISTS(SELECT 1 FROM printings p JOIN printing_artworks a USING(printing_id) WHERE p.locale=m.locale AND p.pid=m.pid AND p.cid=m.cid AND p.rarity_id=m.rarity_id)"+due+" ORDER BY m.cid DESC")
+        try q.bind([.text(PrintingIdentity.baselineDate)]);var result:[Int64]=[]
+        while try q.next(){result.append(q.integer(0)!)};return result
     }
     func verifiedJHSIDs(cid:Int64)throws->Set<Int64> {
         let q=try CardStatement(database:open(),sql:"SELECT jhs_card_id FROM jhs_card_mappings WHERE cid=? AND match_status='verified'");try q.bind([.integer(cid)])
@@ -347,22 +386,18 @@ actor CardDatabase {
         // Detail/market rows are JHS versions. Official printings enrich pack labels only;
         // an unmatched official printing must never create a market row with version ID 0.
         let versions=try printings(cid:cid),official=try officialPrintings(cid:cid),db=try open()
+        let aliases=try jhsPrintingAliases(cid:cid)
         let linked=try CardStatement(database:db,sql:"SELECT j.jhs_version_id,k.name,k.release_date FROM printing_jhs_links j JOIN printings p USING(printing_id) JOIN packs k ON k.locale=p.locale AND k.pid=p.pid WHERE p.cid=? AND j.match_status='verified' ORDER BY k.release_date DESC,k.pid")
         try linked.bind([.integer(cid)]);var labels:[Int64:(String,String?)]=[:]
         while try linked.next(){let id=linked.integer(0)!;if labels[id]==nil {labels[id]=(linked.text(1)!,linked.text(2))}}
         let ranks=try CardStatement(database:db,sql:"SELECT m.source_code,max(r.display_order) FROM rarity_source_mappings m JOIN rarities r USING(rarity_id) WHERE m.source='jhs' AND m.match_status='verified' GROUP BY m.source_code")
         var orders:[String:Int64]=[:];while try ranks.next(){orders[ranks.text(0)!]=ranks.integer(1) ?? -1}
-        func canonicalNumber(_ number:String)->String {
-            var result=number
-            for suffix in ["[Asia]","[Japan]","(-)"] {if result.hasSuffix(suffix){result=String(result.dropLast(suffix.count))}}
-            return result
-        }
-        let byNumber=Dictionary(grouping:official,by:{$0.number})
         return versions.map {version in
-            let candidates=byNumber[canonicalNumber(version.number)] ?? []
+            let candidates=PrintingIdentity.candidates(version,official:official,aliases:aliases)
             let uniquePack=Set(candidates.map(\.pid)).count==1 ? candidates.first:nil
             let label=labels[version.versionID]
-            return CardPrintingDisplay(id:"jhs:\(version.versionID)",versionID:version.versionID,sourceCardID:version.sourceCardID,number:version.number,rarity:version.rarity,packName:label?.0 ?? uniquePack?.packName ?? version.packCode ?? "其他发行物",date:label?.1 ?? uniquePack?.date)
+            let date=[label?.1,uniquePack?.date].compactMap{$0}.first{!$0.isEmpty}
+            return CardPrintingDisplay(id:"jhs:\(version.versionID)",versionID:version.versionID,sourceCardID:version.sourceCardID,number:version.number,rarity:version.rarity,packName:label?.0 ?? uniquePack?.packName ?? version.packCode ?? "其他发行物",date:date)
         }.sorted {
             if $0.date != $1.date {return ($0.date ?? "") > ($1.date ?? "")}
             if $0.number != $1.number {return $0.number < $1.number}
@@ -372,9 +407,42 @@ actor CardDatabase {
         }
     }
     func officialPrintings(cid:Int64)throws->[OfficialPrinting] {
-        let q=try CardStatement(database:open(),sql:"SELECT p.pid,p.card_number,r.code,l.name,k.release_date,k.name FROM printings p JOIN rarities r USING(rarity_id) JOIN packs k ON k.locale=p.locale AND k.pid=p.pid LEFT JOIN rarity_localizations l ON l.rarity_id=r.rarity_id AND l.locale='ja' AND l.source=(SELECT z.source FROM rarity_localizations z WHERE z.rarity_id=r.rarity_id AND z.locale='ja' ORDER BY CASE z.source WHEN 'official-db' THEN 0 ELSE 1 END LIMIT 1) WHERE p.cid=? AND p.locale='ja' ORDER BY k.release_date DESC,p.card_number,r.display_order DESC")
+        let q=try CardStatement(database:open(),sql:"SELECT p.pid,p.card_number,r.code,l.name,k.release_date,k.name,p.rarity_id FROM printings p JOIN rarities r USING(rarity_id) JOIN packs k ON k.locale=p.locale AND k.pid=p.pid LEFT JOIN rarity_localizations l ON l.rarity_id=r.rarity_id AND l.locale='ja' AND l.source=(SELECT z.source FROM rarity_localizations z WHERE z.rarity_id=r.rarity_id AND z.locale='ja' ORDER BY CASE z.source WHEN 'official-db' THEN 0 ELSE 1 END LIMIT 1) WHERE p.cid=? AND p.locale='ja' ORDER BY k.release_date DESC,p.card_number,r.display_order DESC")
         try q.bind([.integer(cid)]);var result:[OfficialPrinting]=[]
-        while try q.next(){result.append(.init(cid:cid,pid:q.text(0)!,number:q.text(1)!,rarity:q.text(2)!,rarityName:q.text(3) ?? "",date:q.text(4),packName:q.text(5)!))};return result
+        while try q.next(){result.append(.init(cid:cid,pid:q.text(0)!,number:q.text(1)!,rarity:q.text(2)!,rarityName:q.text(3) ?? "",date:q.text(4),packName:q.text(5)!,rarityID:q.text(6)))};return result
+    }
+    private func jhsPrintingAliases(cid:Int64)throws->[JHSPrintingAlias] {
+        let query=try CardStatement(database:open(),sql:"SELECT market_number,pid,official_number FROM jhs_printing_aliases WHERE cid=?")
+        try query.bind([.integer(cid)])
+        var aliases:[JHSPrintingAlias]=[]
+        while try query.next() {
+            aliases.append(.init(cid:cid,marketNumber:query.text(0)!,pid:query.text(1)!,officialNumber:query.text(2)!))
+        }
+        return aliases
+    }
+    func jhsLookup(cid:Int64,payload:Data?=nil,additionalExpected:Set<String>=[])throws->CatalogJHSLookup {
+        var result=CatalogJHSLookup(),fresh:[OfficialPrinting]=[]
+        result.aliases=try jhsPrintingAliases(cid:cid)
+        if let payload,let raw=try JSONSerialization.jsonObject(with:payload) as? [String:Any],let ja=raw["official_ja"] as? [String:Any] {
+            for row in ja["printings"] as? [[String:Any]] ?? [] {
+                guard let pid=row["pid"] as? String,let number=row["number"] as? String,let rid=row["rid"] as? String,let code=row["rarity"] as? String else{throw CardCatalogError.invalidData}
+                fresh.append(.init(cid:cid,pid:pid,number:number,rarity:code,rarityName:row["rarity_name"] as? String ?? code,date:row["date"] as? String,packName:row["pack"] as? String ?? "",rarityID:"konami:ocg:rid:"+rid))
+            }
+        }
+        var seen=Set<String>()
+        for row in fresh + (try officialPrintings(cid:cid)) {
+            if seen.insert(row.pid+":"+row.number+":"+(row.rarityID ?? "")).inserted {result.official.append(row)}
+        }
+        result.official.sort {($0.date ?? "",$0.number)>($1.date ?? "",$1.number)}
+        let expected=try CardStatement(database:open(),sql:"SELECT pid,rarity_id FROM jhs_expected_printings WHERE cid=?")
+        try expected.bind([.integer(cid)]);result.expected=additionalExpected
+        while try expected.next(){result.expected.insert(expected.text(0)!+":"+expected.text(1)!)}
+        for row in result.official where (row.date ?? "")>PrintingIdentity.baselineDate {
+            if let rid=row.rarityID {result.expected.insert(row.pid+":"+rid)}
+        }
+        let mappings=try CardStatement(database:open(),sql:"SELECT source_code,rarity_id FROM rarity_source_mappings WHERE source='jhs' AND match_status='verified'")
+        while try mappings.next(){result.rarityIDs[mappings.text(0)!,default:[]].insert(mappings.text(1)!)}
+        return result
     }
     func collectionPacks(locale:String)throws->[CollectionPack] {
         let q=try CardStatement(database:open(),sql:"SELECT pid,name,release_date,category_code,source_subcategory FROM packs WHERE locale=? ORDER BY release_date DESC,pid")
@@ -399,14 +467,32 @@ actor CardDatabase {
             result.insert(q.text(0)!)
         };return result
     }
+    private var allowsEmptyPendulumText: String {
+        """
+        ((c.type_bits & 16777216)=0 OR EXISTS(
+            SELECT 1 FROM card_localizations ja WHERE ja.cid=c.cid AND ja.locale='ja' AND ja.source='official-db'
+            AND trim(ja.name)!='' AND trim(ja.description)!='' AND trim(ja.pendulum_description)=''
+        ))
+        """
+    }
+    func requiresPendulumText(cid:Int64)throws->Bool {
+        try requiresPendulumText(cid:cid,db:open())
+    }
+    private func requiresPendulumText(cid:Int64,db:OpaquePointer)throws->Bool {
+        let q=try CardStatement(database:db,sql:"SELECT NOT "+allowsEmptyPendulumText+" FROM cards c WHERE c.cid=?")
+        try q.bind([.integer(cid)])
+        guard try q.next() else {throw CardCatalogError.invalidData}
+        return q.integer(0)==1
+    }
     private func completeText(_ cid:Int64,source:String?=nil,db:OpaquePointer)throws->Bool {
-        let q=try CardStatement(database:db,sql:"SELECT 1 FROM card_localizations l JOIN cards c USING(cid) WHERE l.cid=? AND l.locale='zh-Hans' AND l.source "+(source == nil ? "IN ('official-db','ygocdb')":"=?")+" AND trim(l.name)!='' AND trim(l.description)!='' AND ((c.type_bits & 16777216)=0 OR trim(l.pendulum_description)!='') LIMIT 1")
+        let q=try CardStatement(database:db,sql:"SELECT 1 FROM card_localizations l JOIN cards c USING(cid) WHERE l.cid=? AND l.locale='zh-Hans' AND l.source "+(source == nil ? "IN ('official-db','ygocdb')":"=?")+" AND trim(l.name)!='' AND trim(l.description)!='' AND (trim(l.pendulum_description)!='' OR "+allowsEmptyPendulumText+") LIMIT 1")
         try q.bind([.integer(cid)]+(source.map{[.text($0)]} ?? []));return try q.next()
     }
     func hasCompleteOfficialText(cid:Int64)throws->Bool {try completeText(cid,source:"official-db",db:open())}
     func hasCompleteChineseText(cid:Int64)throws->Bool {try completeText(cid,db:open())}
     func pendingNWCardIDs()throws->[Int64] {
-        let db=try open(),q=try CardStatement(database:db,sql:"SELECT c.cid FROM cards c WHERE EXISTS(SELECT 1 FROM card_localizations l WHERE l.cid=c.cid AND l.locale='ja') AND NOT EXISTS(SELECT 1 FROM card_localizations l WHERE l.cid=c.cid AND l.locale='zh-Hans' AND l.source IN ('official-db','ygocdb') AND trim(l.name)!='' AND trim(l.description)!='' AND ((c.type_bits & 16777216)=0 OR trim(l.pendulum_description)!='')) ORDER BY c.cid")
+        let scope="(EXISTS(SELECT 1 FROM jhs_expected_printings e WHERE e.cid=c.cid) OR NOT EXISTS(SELECT 1 FROM sync_resources s WHERE s.source='official-db' AND s.resource_type='card-detail' AND s.resource_key='ja:'||c.cid AND s.status='complete'))"
+        let db=try open(),q=try CardStatement(database:db,sql:"SELECT c.cid FROM cards c WHERE "+scope+" AND EXISTS(SELECT 1 FROM card_localizations l WHERE l.cid=c.cid AND l.locale='ja') AND NOT EXISTS(SELECT 1 FROM card_localizations l WHERE l.cid=c.cid AND l.locale='zh-Hans' AND l.source IN ('official-db','ygocdb') AND trim(l.name)!='' AND trim(l.description)!='' AND (trim(l.pendulum_description)!='' OR "+allowsEmptyPendulumText+")) ORDER BY c.cid")
         var result:[Int64]=[];while try q.next(){result.append(q.integer(0)!)};return result
     }
     func pendingOfficialTextIDs()throws->[Int64] {
@@ -422,9 +508,7 @@ actor CardDatabase {
         let q=try CardStatement(database:db,sql:"INSERT OR REPLACE INTO card_localizations VALUES (?,?,?,?,?,?,?,?,?,?,?,?)")
         for (source,text) in [("official-db",update.official),("ygocdb",update.nw)] {
             guard let text,let name=text["name"],!name.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty,let body=text["text"],!body.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty else{continue}
-            let card=try CardStatement(database:db,sql:"SELECT type_bits FROM cards WHERE cid=?")
-            try card.bind([.integer(update.cid)]);guard try card.next() else{throw CardCatalogError.invalidData}
-            if (card.integer(0) ?? 0) & CardVocabulary.pendulum != 0 && (text["pdesc"] ?? "").trimmingCharacters(in:.whitespacesAndNewlines).isEmpty {continue}
+            if try requiresPendulumText(cid:update.cid,db:db), (text["pdesc"] ?? "").trimmingCharacters(in:.whitespacesAndNewlines).isEmpty {continue}
             try q.execute([.integer(update.cid),.text("zh-Hans"),.text(source),.text(name),.null,.text(text["types"] ?? ""),.text(""),.text(body),.text(text["pdesc"] ?? ""),.text(""),.null,.text(stamp)])
             let alias=try CardStatement(database:db,sql:"INSERT OR IGNORE INTO card_aliases(cid,locale,source,name,normalized_name,kind) VALUES (?,'zh-Hans',?,?,?,'translation')")
             try alias.execute([.integer(update.cid),.text(source == "official-db" ? "sc_name":"nwbbs_n"),.text(name),.text(CardVocabulary.normalize(name))])
@@ -459,7 +543,7 @@ actor CardDatabase {
             if nameChanged || textChanged || pendulumChanged {changed.append(row.cid)}
         };return changed
     }
-    func applyUpdate(cards:[Data],packs:[CollectionPack],members:[String:[CollectionCard]],banlists:[BanlistSnapshot],neuronVersion:String,jhs:[CatalogJHSRefresh]=[],translations:[CatalogTranslationRefresh]=[])throws {
+    func applyUpdate(cards:[Data],packs:[CollectionPack],members:[String:[CollectionCard]],banlists:[BanlistSnapshot],neuronVersion:String,jhs:[CatalogJHSRefresh]=[],translations:[CatalogTranslationRefresh]=[],artworks:[CatalogPrintingArtworks]=[])throws {
         let db=try open(),stamp=ISO8601DateFormatter().string(from:.now)
         try execute("BEGIN IMMEDIATE",database:db)
         do {
@@ -486,6 +570,10 @@ actor CardDatabase {
                         try local.execute([.text(key),.text(pack.locale == "cn" ? "zh-Hans":"ja"),.text(rarity.code),.text(rarity.name)])
                         let member=try CardStatement(database:db,sql:"INSERT INTO pack_members VALUES (?,?,?,?,?)")
                         try member.execute([.text(pack.locale),.text(pack.id),.integer(card.id),.text(key),.integer(Int64(position))])
+                        if pack.locale == "ja" && pack.date>PrintingIdentity.baselineDate {
+                            let expected=try CardStatement(database:db,sql:"INSERT OR IGNORE INTO jhs_expected_printings VALUES (?,?,?)")
+                            try expected.execute([.integer(card.id),.text(pack.id),.text(key)])
+                        }
                     }
                     if pack.locale == "cn" {try recordTextState(cid:card.id,official:true,stamp:stamp,db:db)}
                 }
@@ -506,6 +594,7 @@ actor CardDatabase {
                 }
             }
             for update in jhs {try saveJHS(update,stamp:stamp,db:db)}
+            for update in artworks {try savePrintingArtworks(update,stamp:stamp,db:db)}
             let fk=try CardStatement(database:db,sql:"PRAGMA foreign_key_check");guard try !fk.next() else{throw CardCatalogError.invalidData}
             try setState("updated_at",stamp,db:db);try setState("checked_at",stamp,db:db)
             try setState("revision",UUID().uuidString,db:db)
@@ -541,9 +630,49 @@ actor CardDatabase {
         }
         let state=try CardStatement(database:db,sql:"INSERT INTO sync_resources(source,resource_type,resource_key,status,last_attempt_at,last_success_at,attempts,last_error) VALUES ('jhs','card_versions',?,?,?,?,1,?) ON CONFLICT(source,resource_type,resource_key) DO UPDATE SET status=excluded.status,last_attempt_at=excluded.last_attempt_at,last_success_at=COALESCE(excluded.last_success_at,sync_resources.last_success_at),attempts=sync_resources.attempts+1,last_error=excluded.last_error")
         try state.execute([.text(String(update.cid)),.text(complete ? "complete":"partial"),.text(stamp),complete ? .text(stamp):.null,complete ? .null:.text(detail)])
+        try reconcileJHS(cid:update.cid,stamp:stamp,db:db,querySucceeded:complete)
+    }
+    private func reconcileJHS(cid:Int64,stamp:String,db:OpaquePointer,querySucceeded:Bool)throws {
+        let covered=try rebuildJHSLinks(cid:cid,stamp:stamp,db:db)
+        let scope=try CardStatement(database:db,sql:"INSERT OR IGNORE INTO jhs_expected_printings SELECT DISTINCT m.cid,m.pid,m.rarity_id FROM app_pack_members m JOIN packs k ON k.locale=m.locale AND k.pid=m.pid WHERE m.locale='ja' AND m.cid=? AND k.release_date>?")
+        try scope.execute([.integer(cid),.text(PrintingIdentity.baselineDate)])
+        let expected=try CardStatement(database:db,sql:"SELECT pid,rarity_id FROM jhs_expected_printings WHERE cid=?")
+        try expected.bind([.integer(cid)]);var missing=0
+        while try expected.next(){if !covered.contains(expected.text(0)!+":"+expected.text(1)!) {missing+=1}}
+        let hasVersions=try !printings(cid:cid).isEmpty
+        let complete=querySucceeded && hasVersions && missing==0
+        let q=try CardStatement(database:db,sql:"UPDATE sync_resources SET status=?,last_error=CASE WHEN ? THEN NULL ELSE COALESCE(?,last_error) END,next_retry_at=strftime('%Y-%m-%dT%H:%M:%SZ',?,CASE WHEN ? THEN '+7 days' ELSE '+'||min(24,max(1,attempts)*2)||' hours' END) WHERE source='jhs' AND resource_type='card_versions' AND resource_key=?")
+        try q.execute([.text(complete ? "complete":"partial"),.integer(complete ? 1:0),missing>0 ? .text("仍有 \(missing) 条基线后官方收录待补齐"):.null,.text(stamp),.integer(complete ? 1:0),.text(String(cid))])
+    }
+    private func rebuildJHSLinks(cid:Int64,stamp:String,db:OpaquePointer)throws->Set<String> {
+        let official=try officialPrintings(cid:cid),versions=try printings(cid:cid)
+        let aliases=try jhsPrintingAliases(cid:cid)
+        let mappings=try CardStatement(database:db,sql:"SELECT source_code,rarity_id FROM rarity_source_mappings WHERE source='jhs' AND match_status='verified'")
+        var rarityIDs:[String:Set<String>]=[:]
+        while try mappings.next(){rarityIDs[mappings.text(0)!,default:[]].insert(mappings.text(1)!)}
+        let printing=try CardStatement(database:db,sql:"SELECT printing_id FROM printings WHERE locale='ja' AND cid=? AND pid=? AND card_number=? AND rarity_id=?")
+        let link=try CardStatement(database:db,sql:"INSERT OR REPLACE INTO printing_jhs_links VALUES (?,?,'number+rarity+verified-card','verified',?,?)")
+        var covered=Set<String>()
+        for version in versions {
+            let candidates=PrintingIdentity.candidates(version,official:official,aliases:aliases)
+            guard Set(candidates.map(\.pid)).count==1 else{continue}
+            for candidate in candidates {
+                for rid in rarityIDs[version.rarity] ?? rarityIDs[PrintingIdentity.rarity(version.rarity)] ?? [] {
+                    try printing.bind([.integer(cid),.text(candidate.pid),.text(candidate.number),.text(rid)])
+                    while try printing.next() {
+                        let evidence=String(decoding:try JSONSerialization.data(withJSONObject:["market_number":version.number,"official_number":candidate.number]),as:UTF8.self)
+                        try link.execute([.integer(printing.integer(0)!),.integer(version.versionID),.text(evidence),.text(stamp)])
+                        covered.insert(candidate.pid+":"+rid)
+                    }
+                }
+            }
+        }
+        return covered
     }
     private func saveCard(_ bytes:Data,stamp:String,db:OpaquePointer)throws {
-        let card=try JSONDecoder().decode(YGOSourceCard.self,from:bytes)
+        var sanitized=try JSONSerialization.jsonObject(with:bytes) as! [String:Any]
+        if let code=sanitized["id"] as? NSNumber,!(1...99_999_999).contains(code.int64Value) {sanitized["id"]=0}
+        let card=try JSONDecoder().decode(YGOSourceCard.self,from:JSONSerialization.data(withJSONObject:sanitized))
         guard let fields=card.data,let raw=try JSONSerialization.jsonObject(with:bytes) as? [String:Any],let official=raw["official_ja"] as? [String:Any],let ja=raw["jp_name"] as? String,let text=official["text"] as? String,!text.isEmpty else{throw CardCatalogError.invalidData}
         let bits=fields.type,monster=bits&1 != 0,link=bits&CardVocabulary.link != 0,pendulum=bits&CardVocabulary.pendulum != 0
         let q=try CardStatement(database:db,sql:"INSERT INTO cards VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(cid) DO UPDATE SET type_bits=excluded.type_bits,race_code=excluded.race_code,attribute_code=excluded.attribute_code,level_kind=excluded.level_kind,level_value=excluded.level_value,atk=excluded.atk,defense=excluded.defense,scale_left=excluded.scale_left,scale_right=excluded.scale_right,link_markers=excluded.link_markers,playability=excluded.playability,updated_at=excluded.updated_at,passcode=COALESCE(excluded.passcode,cards.passcode)")
@@ -554,7 +683,8 @@ actor CardDatabase {
         if let cn=raw["official_cn"] as? [String:String],let name=cn["name"],let desc=cn["text"] {
             try localization.execute([.integer(card.cid),.text("zh-Hans"),.text("official-db"),.text(name),.null,.text(""),.text(""),.text(desc),.text(cn["pdesc"] ?? ""),.text(""),.null,.text(stamp)])
         }
-        if let nw=raw["nwbbs_n"] as? String,!nw.isEmpty,let body=raw["nw_text"] as? [String:Any],let desc=body["desc"] as? String,!desc.isEmpty,(!pendulum || !(body["pdesc"] as? String ?? "").trimmingCharacters(in:.whitespacesAndNewlines).isEmpty) {
+        let needsPendulumText=try requiresPendulumText(cid:card.cid,db:db)
+        if let nw=raw["nwbbs_n"] as? String,!nw.isEmpty,let body=raw["nw_text"] as? [String:Any],let desc=body["desc"] as? String,!desc.isEmpty,(!needsPendulumText || !(body["pdesc"] as? String ?? "").trimmingCharacters(in:.whitespacesAndNewlines).isEmpty) {
             try localization.execute([.integer(card.cid),.text("zh-Hans"),.text("ygocdb"),.text(nw),.null,.text(body["types"] as? String ?? ""),.text(""),.text(desc),.text(body["pdesc"] as? String ?? ""),.text(""),.null,.text(stamp)])
         }
         let alias=try CardStatement(database:db,sql:"INSERT OR IGNORE INTO card_aliases(cid,locale,source,name,normalized_name,kind) VALUES (?,?,?,?,?,'translation')")
@@ -575,6 +705,25 @@ actor CardDatabase {
             let printing=try CardStatement(database:db,sql:"INSERT OR IGNORE INTO printings(locale,pid,cid,card_number,number_status,rarity_id,position,source_url,fetched_at) VALUES ('ja',?,?,?,?,?,?,?,?)")
             try printing.execute([.text(pid),.integer(card.cid),.text(number),.text(number.isEmpty ? "source-empty":"known"),.text(key),.integer(Int64(position)),.text("\(PrivateConfiguration.value("officialDatabaseOrigin"))/yugiohdb/card_search.action?ope=2&cid=\(card.cid)&request_locale=ja"),.text(stamp)])
         }
+        try savePrintingArtworks(.init(cid:card.cid,rows:(official["printings"] as? [[String:Any]] ?? []).compactMap(OfficialArtworkMapping.init)),stamp:stamp,db:db)
+    }
+    private func savePrintingArtworks(_ update:CatalogPrintingArtworks,stamp:String,db:OpaquePointer)throws {
+        let printing=try CardStatement(database:db,sql:"INSERT OR IGNORE INTO printings(locale,pid,cid,card_number,number_status,rarity_id,position,source_url,fetched_at) SELECT k.locale,k.pid,?,?,?,r.rarity_id,0,?,? FROM packs k JOIN rarities r ON r.rarity_id=? WHERE k.locale='ja' AND k.pid=? AND EXISTS(SELECT 1 FROM cards WHERE cid=?)")
+        let q=try CardStatement(database:db,sql:"INSERT OR IGNORE INTO printing_artworks SELECT printing_id,?,? FROM printings WHERE locale='ja' AND cid=? AND pid=? AND card_number=? AND rarity_id=?")
+        for row in update.rows {
+            // Some old installs have only full pack membership, not a numbered
+            // printing row. Repair that natural key without rewriting card text.
+            try printing.execute([.integer(update.cid),.text(row.number),.text(row.number.isEmpty ? "source-empty":"known"),.text("\(PrivateConfiguration.value("officialDatabaseOrigin"))/yugiohdb/card_search.action?ope=2&cid=\(update.cid)&request_locale=ja"),.text(stamp),.text("konami:ocg:rid:"+row.rid),.text(row.pid),.integer(update.cid)])
+            for ciid in Set(row.ciids) {
+                try q.execute([.integer(ciid),.text("official-db:"+stamp),.integer(update.cid),.text(row.pid),.text(row.number),.text("konami:ocg:rid:"+row.rid)])
+            }
+        }
+        let missing=try CardStatement(database:db,sql:"SELECT count(*) FROM app_pack_members m JOIN packs k ON k.locale=m.locale AND k.pid=m.pid WHERE m.locale='ja' AND m.cid=? AND k.release_date>? AND NOT EXISTS(SELECT 1 FROM printings p JOIN printing_artworks a USING(printing_id) WHERE p.locale=m.locale AND p.pid=m.pid AND p.cid=m.cid AND p.rarity_id=m.rarity_id)")
+        try missing.bind([.integer(update.cid),.text(PrintingIdentity.baselineDate)]);_ = try missing.next()
+        let complete=missing.integer(0)==0
+        let state=try CardStatement(database:db,sql:"INSERT INTO sync_resources(source,resource_type,resource_key,status,last_attempt_at,last_success_at,next_retry_at,attempts,last_error) VALUES ('official-db','printing-artworks',?,?,?,?,?,1,?) ON CONFLICT(source,resource_type,resource_key) DO UPDATE SET status=excluded.status,last_attempt_at=excluded.last_attempt_at,last_success_at=COALESCE(excluded.last_success_at,sync_resources.last_success_at),next_retry_at=excluded.next_retry_at,attempts=sync_resources.attempts+1,last_error=excluded.last_error")
+        let next=ISO8601DateFormatter().string(from:(ISO8601DateFormatter().date(from:stamp) ?? .now).addingTimeInterval(7200))
+        try state.execute([.text(String(update.cid)),.text(complete ? "complete":"partial"),.text(stamp),complete ? .text(stamp):.null,complete ? .null:.text(next),complete ? .null:.text("仍有收录缺少明确的 CIID 映射")])
     }
 }
 

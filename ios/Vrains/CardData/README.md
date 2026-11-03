@@ -9,6 +9,7 @@ CardData/
 ├── README.md
 ├── catalog-runtime.sql
 ├── catalog.sqlite
+├── catalog-baseline-links.json
 ├── neuron-ja.sqlite
 ├── neuron-index.json
 ├── NeuronArtworks/
@@ -22,6 +23,7 @@ CardData/
 | 文件或目录 | 作用 |
 | --- | --- |
 | `catalog.sqlite` | 卡片属性、各语言文本、别名、卡包、收录、罕贵、禁限卡表和 JHS 版本映射 |
+| `catalog-baseline-links.json` | 与内置数据库配套的集换社版本和发售日期关联数据 |
 | `catalog-runtime.sql` | 创建或迁移 App 查询视图、收录与资料状态表和索引 |
 | `neuron-ja.sqlite` | Neuron 日文资料及卡片、异画与资源文件的映射 |
 | `neuron-index.json` | 卡图下载资源的索引与版本信息 |
@@ -40,10 +42,14 @@ CardData/
 
 - `app_cards` 将卡片属性、语言文本和别名整理为 App 查询字段，定义名称与效果文本的来源优先级。
 - `app_releases` 综合卡包收录与发售记录，提供各地区最早收录；日文包括官网已公开但尚未发售的卡，因此新卡可按未来发售日排序。
+
 - `app_limits` 按日期与赛制选择最新且完整的禁限卡表记录。
 - `pack_members` 保存经过完整列表校验的 CID、次序与罕贵，不伪造卡号；`app_pack_members` 优先使用完整列表，否则显示卡片明细中已知的收录。
-- `sync_resources` 的 `official-db/pack-membership` 保存完整包内卡片数量。单卡明细顺带发现的卡包不视为完整，后续检查更新时会补齐。
-- `sync_resources` 的 `ygocdb/nw-text`、`official-db/cn-text` 分别保存 NW 和官方简中名称、正文、灵摆文本的补齐状态。新卡直接查询官方简中，缺少时查询 NW；简中新卡包发布后逐卡补缺失的官方简中。缺名称、正文或必需的灵摆文本时，下次检查更新继续重试，名称相同也不代表文本完整。
+- `printing_artworks` 保存官方收录与卡图编号（CIID）的关系，一条收录可关联多个卡图。
+- `printing_jhs_links` 保存已确认的集换社版本与官方收录关联，供版本列表显示发售日期。
+- `jhs_printing_aliases` 保存两家数据源使用不同卡号时的已核验对应关系，按 CID 和官方卡包限定匹配范围。
+- `jhs_expected_printings` 保存用于判断集换社版本覆盖范围的官方卡包与罕贵。
+- `sync_resources` 保存卡包收录、中文文本和集换社版本等资料的校验状态。
 - `catalog_state` 保存本地资料的版本与检查状态。
 - 索引支持按罕贵和语言查询收录资料。
 
@@ -53,6 +59,8 @@ CardData/
 
 源码仓库管理 `README.md` 和 `catalog-runtime.sql`。数据库与图片资源通过项目根目录的 `ios/scripts/local_resources.py unpack <资源包路径>` 还原。
 
-资源包保存数据库快照与小型素材。完整卡图从配置指定的 ZIP 下载，脚本使用 Neuron 数据库将资源文件映射为卡片及异画编号，校验、解密后写入 `NeuronArtworks/`。Xcode 构建时将还原的离线卡图一起打包到 App。
+资源包包含数据库快照、对应的关联数据和小型素材。卡片数据库的资料基线为 2026-10-20。构建要求 `catalog.sqlite` 和 `catalog-baseline-links.json` 来自同一个资源包，并校验数据库完整性与关联文件的 SHA-256。
+
+完整卡图从配置指定的 ZIP 下载，脚本使用 Neuron 数据库将资源文件映射为卡片及异画编号，校验、解密后写入 `NeuronArtworks/`。Xcode 构建时将还原的离线卡图一起打包到 App。
 
 配置、签名和资源迁移命令见 [iOS 开发说明](../../README.md)。

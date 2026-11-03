@@ -29,15 +29,24 @@ enum OfficialHTML {
         }
         return value.trimmingCharacters(in:.whitespacesAndNewlines)
     }
+    static func cardTextSections(_ html: String) -> (body: String, pendulum: String?) {
+        let section=html.components(separatedBy:"<!-- ///CardDetail_packlist")[0]
+        let blocks=groups(#"<div class="CardText( pen)?">(.*?)(?=<!-- CardText -->|<div class="CardText(?: pen)?">|$)"#,in:section)
+        func text(_ block: String) -> String {
+            groups(#"<div class="text_linebreak">(.*?)</div>"#,in:block).first?.first.map(clean) ?? ""
+        }
+        let body=blocks.filter{$0[0].isEmpty}.map{text($0[1])}.first{!$0.isEmpty} ?? ""
+        let pendulum=blocks.first{!$0[0].isEmpty}.map{text($0[1])}
+        return (body,pendulum)
+    }
     static func chineseTranslation(cid: Int64, html: String, pendulum: Bool) throws -> [String:String] {
         guard html.contains("class=\"CardText\""),
               groups(#"<meta[^>]+http-equiv=["']Content-Language["'][^>]+content=["']cn["']"#,in:html).count==1,
               let pageCID=groups(#"<meta[^>]+property=["']og:url["'][^>]+content=["'][^"']*cid=([0-9]+)"#,in:html).first?.first.flatMap(Int64.init),pageCID==cid,
               let title=groups(#"<meta[^>]+(?:name|property)=["'](?:title|og:title)["'][^>]+content=["']([^"']+)"#,in:html).first?.first else { throw CardCatalogError.invalidData }
-        let section=html.components(separatedBy:"<!-- ///CardDetail_packlist")[0]
-        let texts=groups(#"<div class="text_linebreak">(.*?)</div>"#,in:section).map { clean($0[0]) }
-        let name=clean(title.components(separatedBy:" | ")[0]),desc=texts.dropFirst(pendulum ? 1:0).first ?? ""
-        let pdesc=pendulum ? texts.first ?? "" : ""
+        let texts=cardTextSections(html)
+        let name=clean(title.components(separatedBy:" | ")[0]),desc=texts.body
+        let pdesc=texts.pendulum ?? ""
         guard !name.isEmpty,!desc.isEmpty,(!pendulum || !pdesc.isEmpty) else { throw CardCatalogError.invalidData }
         return ["name":name,"text":desc,"pdesc":pdesc]
     }
@@ -52,11 +61,10 @@ enum OfficialHTML {
         }
         raw["cid"]=cid;raw["jp_name"]=clean(title.components(separatedBy:" | ")[0])
         let ruby=groups(#"<span class="ruby">(.*?)</span>"#,in:html).first?.first;raw["jp_ruby"]=ruby.map(clean) ?? raw["jp_name"]
-        func texts(_ value: String) -> [String] { groups(#"<div class="text_linebreak">(.*?)</div>"#,in:value.components(separatedBy:"<!-- ///CardDetail_packlist")[0]).map { clean($0[0]) } }
-        let all=texts(html),pendulum=html.contains("class=\"CardText pen\"")
-        let desc=all.dropFirst(pendulum ? 1:0).first ?? "",pdesc=pendulum ? all.first ?? "" : ""
+        let texts=cardTextSections(html)
+        let desc=texts.body,pdesc=texts.pendulum ?? ""
         var translated=raw["text"] as? [String:Any] ?? [:]
-        let freshChinese=chinese.flatMap { try? chineseTranslation(cid:cid,html:$0,pendulum:pendulum) }
+        let freshChinese=chinese.flatMap { try? chineseTranslation(cid:cid,html:$0,pendulum:!pdesc.isEmpty) }
         let preservedChinese=(previous?["official_cn"] as? [String:String]) ?? raw["official_cn"] as? [String:String]
         if let cn=freshChinese ?? preservedChinese {
             raw["sc_name"]=cn["name"];raw["official_cn"]=cn
@@ -74,6 +82,8 @@ enum OfficialHTML {
         let effect=groups(#"<span class="item_box_value">\s*([^<]+)</span>"#,in:html).first?.first ?? ""
         var bits: Int64 = monster ? 1 : effect.contains("罠") ? 4 : 2
         for (name,flag) in types where (monster ? species : effect).contains(name) && (monster || flag != 16 && flag != 32) { bits |= flag }
+        let pendulum=bits & 16777216 != 0
+        guard !pendulum || texts.pendulum != nil else { throw CardCatalogError.invalidData }
         data["type"]=bits
         if monster {
             guard vals.count>=4,let level=number(vals[1]),let atk=number(vals[2]) else { throw CardCatalogError.invalidData }
@@ -92,16 +102,25 @@ enum OfficialHTML {
         raw["data"]=data
         if (translated["types"] as? String ?? "").isEmpty { translated["types"]=monster ? species+"\n"+vals.prefix(4).joined(separator:" · ") : effect }
         raw["text"]=translated
+        let notes=[desc,pdesc].first{$0.contains("公式のデュエルでは使用できません")} ?? ""
+        raw["official_ja"]=["text":desc,"pdesc":pdesc,"notes":notes,"printings":printings(html)]
+        return try JSONSerialization.data(withJSONObject:raw,options:[.sortedKeys])
+    }
+    static func printings(_ html:String)->[[String:Any]] {
         let printingSection=html.components(separatedBy:"<!-- ///CardDetail_packlist").dropFirst().first?.components(separatedBy:"id=\"relationCard\"").first ?? ""
         let printings=printingSection.components(separatedBy:"<div class=\"t_row").flatMap { row -> [[String:Any]] in
             guard let pid=groups(#"pid=([0-9]+)"#,in:row).first?.first,
                   let number=groups(#"<div class="card_number">(.*?)</div>"#,in:row).first?.first.map(clean),
                   let pack=groups(#"<div class="pack_name[^\"]*"[^>]*>(.*?)</div>"#,in:row).first?.first.map(clean) else{return []}
             let date=groups(#"<div class="time">\s*([0-9-]+)"#,in:row).first?.first ?? ""
-            return groups(#"<div class="lr_icon[^"]*\brid_([0-9]+)\b[^"]*"[^>]*>\s*<p>(.*?)</p>\s*<span[^>]*>(.*?)</span>"#,in:row).map { ["pid":pid,"number":number,"pack":pack,"date":date,"rid":$0[0],"rarity":clean($0[1]),"rarity_name":clean($0[2])] }
+            let ciids=groups(#"\bpack_iid_([1-9][0-9]*)\b"#,in:row).compactMap{$0.first.flatMap(Int64.init)}
+            return groups(#"<div class="lr_icon[^"]*\brid_([0-9]+)\b[^"]*"[^>]*>\s*<p>(.*?)</p>\s*<span[^>]*>(.*?)</span>"#,in:row).map { ["pid":pid,"number":number,"pack":pack,"date":date,"rid":$0[0],"rarity":clean($0[1]),"rarity_name":clean($0[2]),"ciids":ciids] }
         }
-        raw["official_ja"]=["text":desc,"pdesc":pdesc,"notes":all.first(where:{$0.contains("公式のデュエルでは使用できません")}) ?? "","printings":printings]
-        return try JSONSerialization.data(withJSONObject:raw,options:[.sortedKeys])
+        return printings
+    }
+    static func artworkMappings(cid:Int64,html:String)throws->CatalogPrintingArtworks {
+        guard html.contains("class=\"CardText"),groups(#"<meta[^>]+property=["']og:url["'][^>]+content=["'][^"']*cid=([0-9]+)"#,in:html).first?.first.flatMap(Int64.init)==cid else{throw CardCatalogError.invalidData}
+        return .init(cid:cid,rows:printings(html).compactMap(OfficialArtworkMapping.init))
     }
 }
 
@@ -144,6 +163,14 @@ struct CatalogSourceEvent:Sendable {
 typealias CatalogSourceObserver = @Sendable (CatalogSourceEvent) async -> Void
 
 struct BanlistVersionRequest:Sendable {let format:CardFormat;let date:String}
+struct OfficialArtworkMapping:Sendable {
+    let pid:String;let number:String;let rid:String;let ciids:[Int64]
+    init?(_ row:[String:Any]) {
+        guard let pid=row["pid"] as? String,let number=row["number"] as? String,let rid=row["rid"] as? String,let ciids=row["ciids"] as? [Int64],!ciids.isEmpty,ciids.allSatisfy({$0>0}) else{return nil}
+        self.pid=pid;self.number=number;self.rid=rid;self.ciids=ciids
+    }
+}
+struct CatalogPrintingArtworks:Sendable {let cid:Int64;let rows:[OfficialArtworkMapping]}
 struct CatalogUpdatePlan:Sendable {
     let packs:[CollectionPack]
     let banlists:[BanlistSnapshot]
@@ -153,8 +180,9 @@ struct CatalogUpdatePlan:Sendable {
     var jhsRetryIDs:[Int64]=[]
     var nwRetryIDs:[Int64]=[]
     var officialTextRetryIDs:[Int64]=[]
+    var artworkRetryIDs:[Int64]=[]
     var coreChanges:Bool {!packs.isEmpty || !banlists.isEmpty || !history.isEmpty || neuron.hasChanges}
-    var hasChanges:Bool {coreChanges || !jhsRetryIDs.isEmpty || !nwRetryIDs.isEmpty || !officialTextRetryIDs.isEmpty}
+    var hasChanges:Bool {coreChanges || !jhsRetryIDs.isEmpty || !nwRetryIDs.isEmpty || !officialTextRetryIDs.isEmpty || !artworkRetryIDs.isEmpty}
     var affectedSources:[CatalogSource] {
         var result:[CatalogSource]=[]
         if packs.contains(where:{$0.locale=="ja"}) {result.append(.packs)}
@@ -163,6 +191,7 @@ struct CatalogUpdatePlan:Sendable {
         if neuron.hasChanges {result.append(.neuron)}
         if coreChanges {result += [.cards,.translations,.jhs]}
         else if !jhsRetryIDs.isEmpty {result.append(.jhs)}
+        if !artworkRetryIDs.isEmpty && !result.contains(.cards) {result.append(.cards)}
         if !nwRetryIDs.isEmpty && !result.contains(.translations) {result.append(.translations)}
         return result
     }
@@ -172,7 +201,7 @@ struct CatalogUpdatePlan:Sendable {
             case .packs: "OCG 日文卡包与收录：\(packs.filter{$0.locale=="ja"}.count) 个卡包"
             case .cnPacks: "简中卡包与官方名称、文本：\(packs.filter{$0.locale=="cn"}.count) 个卡包 · \(officialTextRetryIDs.count) 张待补齐"
             case .neuron: "Neuron 卡图：\(neuron.version)"
-            case .cards: "官方卡牌资料：按本次新增或变更卡牌补齐"
+            case .cards: artworkRetryIDs.isEmpty ? "官方卡牌资料：按本次新增或变更卡牌补齐":"官方收录卡图映射：\(artworkRetryIDs.count) 张待补齐"
             case .translations: "NW 名称与文本：随变更卡牌更新 · \(nwRetryIDs.count) 张待补齐"
             case .jhs: "集换社收录与版本："+(jhsRetryIDs.isEmpty ? "随变更卡牌更新":"重试 \(jhsRetryIDs.count) 张待补齐卡牌")
             default: source.title+"："+(banlists.first(where:{CatalogSource.banlist(CardFormat(rawValue:$0.format) ?? .ocg)==source})?.date ?? "补齐历史版本")
@@ -214,23 +243,45 @@ actor CardUpdater {
     let artwork:any CatalogArtworkSource
     let jhs:any CatalogJHSSource
     init(transport:any APITransport=NetworkTransport(),artwork:any CatalogArtworkSource=NeuronArtworkStore.shared,jhs:any CatalogJHSSource=CatalogJHSClient()){self.transport=transport;self.artwork=artwork;self.jhs=jhs}
-    func refreshJHS(cid:Int64,passcode:Int64?,names:[CardName],known:Set<Int64>)async throws->CatalogJHSRefresh {
-        let exact=passcode.map{$0>0 && $0<=99999999} ?? false
-        let keyword=exact ? String(format:"%08lld",passcode!):(names.first{$0.source=="jp_name"}?.name ?? names.first?.name ?? "")
-        guard !keyword.isEmpty else {return .init(cid:cid,records:[],method:"pending",detail:"暂无可用于查询的卡密或名称")}
-        do {
-            let all=try await jhs.search(keyword:keyword)
+    func refreshJHS(cid:Int64,passcode:Int64?,names:[CardName],known:Set<Int64>,lookup:CatalogJHSLookup = .init())async throws->CatalogJHSRefresh {
+        var keywords:[(kind:String,word:String)]=[],seen=Set<String>()
+        func add(_ kind:String,_ word:String) {
+            if !word.isEmpty,seen.insert(word).inserted {keywords.append((kind,word))}
+        }
+        for number in lookup.numbers {add("official_number",number)}
+        for source in ["jp_name","sc_name"] {for name in names where name.source==source {add("exact_name",name.name)}}
+        if let passcode,(1...99_999_999).contains(passcode) {add("passcode",String(format:"%08lld",passcode))}
+        for name in names where name.source=="nwbbs_n" {add("exact_name",name.name)}
+        var resolved=known,records:[Int64:CardPrinting]=[:],method="pending"
+        var detail="暂无可用于查询的卡密或名称"
+        for keyword in keywords {do {
+            let all=try await jhs.search(keyword:keyword.word)
             let valid=all.filter{$0.sourceCardID.map{$0>0} == true && $0.versionID>0 && !$0.number.isEmpty && !$0.rarity.isEmpty}
             guard valid.count==all.count else {throw CardCatalogError.invalidData}
-            let ids=Set(valid.compactMap(\.sourceCardID))
-            let selected:[CardPrinting]
-            if !known.isEmpty {selected=valid.filter{known.contains($0.sourceCardID!)}}
-            else if ids.count==1 && (exact || valid.allSatisfy{$0.matches(names:names)}) {selected=valid}
-            else {selected=[]}
-            guard !selected.isEmpty else {return .init(cid:cid,records:[],method:"pending",detail:all.isEmpty ? "集换社尚无版本，下次继续补齐":"版本身份尚不能确认，下次继续核对")}
-            return .init(cid:cid,records:selected,method:known.isEmpty ? (exact ? "passcode_unique":"exact_name_unique"):"verified_card_id",detail:"已读取 \(selected.count) 条版本")
+            let candidates:[CardPrinting]
+            if keyword.kind=="official_number" {
+                candidates=valid.filter {row in
+                    PrintingIdentity.number(row.number)==PrintingIdentity.number(keyword.word) || PrintingIdentity.candidates(row,official:lookup.official,aliases:lookup.aliases).contains{$0.number==keyword.word}
+                }
+            } else if keyword.kind=="passcode" || !resolved.isEmpty {candidates=valid}
+            else {candidates=valid.filter{$0.matches(names:names)}}
+            let ids=Set(candidates.compactMap(\.sourceCardID))
+            let selected = !resolved.isEmpty ? candidates.filter{resolved.contains($0.sourceCardID!)} : ids.count==1 ? candidates:[]
+            guard !selected.isEmpty else {detail=all.isEmpty ? "集换社尚无版本，下次继续补齐":"版本身份尚不能确认，下次继续核对";continue}
+            for row in selected {
+                if let old=records[row.versionID],old.sourceCardID != row.sourceCardID {throw CardCatalogError.invalidData}
+            }
+            if method=="pending" {method=known.isEmpty ? keyword.kind+"_unique":"verified_card_id"}
+            resolved.formUnion(selected.compactMap(\.sourceCardID))
+            for row in selected {records[row.versionID]=row}
+            // A first identity match may cover only a normal printing. Keep going
+            // for bonus numbers, rarities and JAS/YAS aliases until the scope is covered.
+            if lookup.covers(Array(records.values)) {break}
         } catch is CancellationError {throw CancellationError()}
-        catch {try Task.checkCancellation();return .init(cid:cid,records:[],method:"pending",detail:"本次查询失败，下次继续补齐")}
+        catch {try Task.checkCancellation();detail="本次查询失败，下次继续补齐"}
+        }
+        let rows=records.values.sorted{$0.versionID<$1.versionID}
+        return .init(cid:cid,records:rows,method:method,detail:rows.isEmpty ? detail:"已读取 \(rows.count) 条版本"+(lookup.covers(rows) ? "":"，仍有预期收录待补齐"))
     }
     private func fetch(_ url:URL)async throws->Data {
         var request=URLRequest(url:url);request.timeoutInterval=15;request.cachePolicy = .reloadIgnoringLocalCacheData
@@ -242,6 +293,10 @@ actor CardUpdater {
         do {return try await fetch(url)}
         catch is CancellationError {throw CancellationError()}
         catch {try Task.checkCancellation();return nil}
+    }
+    func translationIfNeeded(cid:Int64,pendulum:Bool,officialComplete:Bool,chineseComplete:Bool,requiresOfficial:Bool)async throws->CatalogTranslationRefresh {
+        guard !officialComplete && (!chineseComplete || requiresOfficial) else{return .init(cid:cid)}
+        return try await translation(cid:cid,pendulum:pendulum,requiresOfficial:requiresOfficial,needsNW:!chineseComplete)
     }
     private func translation(cid:Int64,pendulum:Bool,requiresOfficial:Bool,needsNW:Bool=true)async throws->CatalogTranslationRefresh {
         var update=CatalogTranslationRefresh(cid:cid,requiresOfficial:requiresOfficial)
@@ -262,6 +317,10 @@ actor CardUpdater {
         }
         return update
     }
+    func refreshArtworks(cid:Int64)async throws->CatalogPrintingArtworks {
+        let url=URL(string:"\(PrivateConfiguration.value("officialDatabaseOrigin"))/yugiohdb/card_search.action?ope=2&cid=\(cid)&request_locale=ja")!
+        return try OfficialHTML.artworkMappings(cid:cid,html:String(decoding:try await fetch(url),as:UTF8.self))
+    }
     func check(database:CardDatabase,observe:CatalogSourceObserver?=nil)async throws->CatalogUpdatePlan {
         await observe?(.init(source:.packs,phase:.checking,detail:"比对官网卡包目录"))
         let catalog=try await fetch(CollectionService.catalogURL("ja"))
@@ -269,7 +328,7 @@ actor CardUpdater {
         let local=try await database.collectionPacks(locale:"ja"),known=Dictionary(uniqueKeysWithValues:local.map{($0.id,$0)})
         let complete=try await database.completePackIDs(locale:"ja")
         // Public listings may precede release. Pack existence alone is not membership completeness.
-        var changed=remote.filter{known[$0.id]==nil || known[$0.id]?.date != $0.date || !complete.contains($0.id)}
+        var changed=remote.filter{$0.date>PrintingIdentity.baselineDate && (known[$0.id]==nil || known[$0.id]?.date != $0.date || !complete.contains($0.id))}
         await observe?(.init(source:.packs,phase:changed.isEmpty ? .current:.available,detail:changed.isEmpty ? "已校验官网目录与本地收录状态":"发现 \(changed.count) 个新增或待补齐卡包"))
         await observe?(.init(source:.cnPacks,phase:.checking,detail:"比对简中官网卡包目录"))
         let cnRemote=try CollectionParser.chinese(try await fetch(CollectionService.catalogURL("cn")))
@@ -277,7 +336,7 @@ actor CardUpdater {
         let cnComplete=try await database.completePackIDs(locale:"cn")
         let formatter=DateFormatter();formatter.calendar=Calendar(identifier:.gregorian);formatter.locale=Locale(identifier:"en_US_POSIX");formatter.timeZone=TimeZone(identifier:"Asia/Shanghai");formatter.dateFormat="yyyy-MM-dd"
         let today=formatter.string(from:.now)
-        let cnChanged=cnRemote.filter{$0.date<=today && (cnKnown[$0.id]==nil || cnKnown[$0.id]?.date != $0.date || !cnComplete.contains($0.id))}
+        let cnChanged=cnRemote.filter{$0.date>PrintingIdentity.baselineDate && $0.date<=today && (cnKnown[$0.id]==nil || cnKnown[$0.id]?.date != $0.date || !cnComplete.contains($0.id))}
         changed+=cnChanged
         let nwRetry=try await database.pendingNWCardIDs(),officialRetry=try await database.pendingOfficialTextIDs()
         await observe?(.init(source:.cnPacks,phase:cnChanged.isEmpty && officialRetry.isEmpty ? .current:.available,detail:"\(cnChanged.count) 个卡包 · \(officialRetry.count) 张官方名称与文本待补齐"))
@@ -304,10 +363,12 @@ actor CardUpdater {
         let neuron=NeuronUpdateProbe(version:probe.version,estimatedBytes:probe.estimatedBytes,hasChanges:probe.hasChanges || NeuronArtworkStore.newer(probe.version,than:version))
         await observe?(.init(source:.neuron,phase:neuron.hasChanges ? .available:.current,detail:"远端版本 \(neuron.version) · 卡图完整保存到 App"))
         let jhsRetry=try await database.pendingJHSCardIDs()
+        let artworkRetry=try await database.pendingArtworkCardIDs()
+        if !artworkRetry.isEmpty {await observe?(.init(source:.cards,phase:.available,detail:"\(artworkRetry.count) 张卡牌的收录卡图映射待补齐"))}
         await observe?(.init(source:.jhs,phase:jhsRetry.isEmpty ? .dependent:.available,detail:jhsRetry.isEmpty ? "随变更卡牌更新；内置资料为构建时基线":"\(jhsRetry.count) 张卡牌等待继续补齐"))
         // HTML is estimated at 150 KB per card, 100 cards per new pack. Japanese artwork payloads are included in the Neuron estimate.
-        let estimate=Int64(changed.count)*15_000_000+Int64(bans.count+history.count)*200_000+neuron.estimatedBytes+Int64(jhsRetry.count+nwRetry.count+officialRetry.count)*200_000
-        return .init(packs:changed,banlists:bans,neuron:neuron,estimatedBytes:max(estimate,neuron.hasChanges ? 1_000_000:0),history:history,jhsRetryIDs:jhsRetry,nwRetryIDs:nwRetry,officialTextRetryIDs:officialRetry)
+        let estimate=Int64(changed.count)*15_000_000+Int64(bans.count+history.count)*200_000+neuron.estimatedBytes+Int64(jhsRetry.count+nwRetry.count+officialRetry.count+artworkRetry.count)*200_000
+        return .init(packs:changed,banlists:bans,neuron:neuron,estimatedBytes:max(estimate,neuron.hasChanges ? 1_000_000:0),history:history,jhsRetryIDs:jhsRetry,nwRetryIDs:nwRetry,officialTextRetryIDs:officialRetry,artworkRetryIDs:artworkRetry)
     }
     func install(_ plan:CatalogUpdatePlan,database:CardDatabase,progress:@escaping @Sendable(String)async->Void,observe:CatalogSourceObserver?=nil)async throws {
         var banlists=plan.banlists
@@ -341,20 +402,41 @@ actor CardUpdater {
             let existing=try await database.banlistCards(cids:snapshot.entries.map(\.cid))
             ids.formUnion(snapshot.entries.map(\.cid).filter{existing[$0]==nil})
         }
+        // Retry installed cards with fresh official printings/names too: a completed
+        // 10/31 pack snapshot otherwise never refreshes its earlier card-detail snapshot.
+        ids.formUnion(plan.jhsRetryIDs)
         var payloads:[Data]=[],translations:[CatalogTranslationRefresh]=[]
         for (index,cid) in ids.sorted().enumerated() {
             try Task.checkCancellation();await progress("更新卡牌资料 \(index+1)/\(ids.count)")
             await observe?(.init(source:.cards,phase:.updating,detail:"\(index+1) / \(ids.count) 张卡牌"))
             let url=URL(string:"\(PrivateConfiguration.value("officialDatabaseOrigin"))/yugiohdb/card_search.action?ope=2&cid=\(cid)&request_locale=ja")!
             let html=String(decoding:try await fetch(url),as:UTF8.self)
-            await observe?(.init(source:.translations,phase:.updating,detail:"读取 CID \(cid) 的名称与文本"))
-            let update=try await translation(cid:cid,pendulum:html.contains("class=\"CardText pen\""),requiresOfficial:cnIDs.contains(cid) || plan.officialTextRetryIDs.contains(cid))
+            let officialComplete=try await database.hasCompleteOfficialText(cid:cid)
+            let chineseComplete=try await database.hasCompleteChineseText(cid:cid)
+            let requiresOfficial=cnIDs.contains(cid) || plan.officialTextRetryIDs.contains(cid)
+            if !officialComplete && (!chineseComplete || requiresOfficial) {
+                await observe?(.init(source:.translations,phase:.updating,detail:"补齐 CID \(cid) 的名称与文本"))
+            }
+            let japaneseText=OfficialHTML.cardTextSections(html)
+            let update=try await translationIfNeeded(cid:cid,pendulum:!(japaneseText.pendulum ?? "").isEmpty,officialComplete:officialComplete,chineseComplete:chineseComplete,requiresOfficial:requiresOfficial)
             let bytes=try OfficialHTML.rawCard(cid:cid,japanese:html,chinese:nil,supplement:update.supplement)
             var raw=try JSONSerialization.jsonObject(with:bytes) as! [String:Any]
             if let official=update.official {raw["official_cn"]=official;raw["sc_name"]=official["name"]}
             else {raw.removeValue(forKey:"sc_name")}
             payloads.append(try JSONSerialization.data(withJSONObject:raw));translations.append(update)
             try await Task.sleep(for:.milliseconds(400))
+        }
+        var artworks:[CatalogPrintingArtworks]=[]
+        let artworkIDs=Set(plan.artworkRetryIDs).subtracting(ids).sorted()
+        for (index,cid) in artworkIDs.enumerated() {
+            try Task.checkCancellation()
+            await progress("补齐收录卡图映射 \(index+1)/\(artworkIDs.count)")
+            await observe?(.init(source:.cards,phase:.updating,detail:"仅补齐 CID \(cid) 的收录卡图映射"))
+            do {
+                artworks.append(try await refreshArtworks(cid:cid))
+            } catch is CancellationError {throw CancellationError()}
+            catch {try Task.checkCancellation();artworks.append(.init(cid:cid,rows:[]))}
+            try await Task.sleep(for:.milliseconds(200))
         }
         let textIDs=cnIDs.union(plan.nwRetryIDs).union(plan.officialTextRetryIDs).subtracting(ids)
         for cid in textIDs.sorted() {
@@ -364,8 +446,8 @@ actor CardUpdater {
             try Task.checkCancellation()
             await progress("补齐名称与文本：CID \(cid)")
             await observe?(.init(source:cnIDs.contains(cid) || plan.officialTextRetryIDs.contains(cid) ? .cnPacks:.translations,phase:.updating,detail:"补齐 CID \(cid) 的名称与文本"))
-            let details=try await database.details(cid:cid)
-            translations.append(try await translation(cid:cid,pendulum:details.card.isPendulum,requiresOfficial:cnIDs.contains(cid) || plan.officialTextRetryIDs.contains(cid),needsNW:!chineseComplete))
+            let requiresPendulumText=try await database.requiresPendulumText(cid:cid)
+            translations.append(try await translationIfNeeded(cid:cid,pendulum:requiresPendulumText,officialComplete:officialComplete,chineseComplete:chineseComplete,requiresOfficial:cnIDs.contains(cid) || plan.officialTextRetryIDs.contains(cid)))
             try await Task.sleep(for:.milliseconds(400))
         }
         let existingCards=try await database.banlistCards(cids:Array(ids))
@@ -375,10 +457,13 @@ actor CardUpdater {
             let raw=try JSONSerialization.jsonObject(with:bytes) as! [String:Any]
             let names=["jp_name","sc_name","nwbbs_n"].compactMap {key -> CardName? in (raw[key] as? String).map{CardName(source:key,name:$0)}}
             var translatedNames=names
+            // Reusing complete text must also retain local aliases for name-only JHS searches.
+            if existingCards[card.cid] != nil {translatedNames += try await database.details(cid:card.cid).names}
             if let update=translations.first(where:{$0.cid==card.cid}),let name=update.official?["name"] ?? update.nw?["name"] {translatedNames.append(CardName(source:update.official==nil ? "nwbbs_n":"sc_name",name:name))}
-            fresh[card.cid]=(card.id>0 ? card.id:existingCards[card.cid]?.passcode,translatedNames)
+            fresh[card.cid]=((1...99_999_999).contains(card.id) ? card.id:existingCards[card.cid]?.passcode,translatedNames)
         }
         var jhsUpdates:[CatalogJHSRefresh]=[]
+        let payloadByCID=try Dictionary(uniqueKeysWithValues:payloads.map{bytes in (try JSONDecoder().decode(YGOSourceCard.self,from:bytes).cid,bytes)})
         let jhsIDs=ids.union(plan.jhsRetryIDs).sorted()
         for (index,cid) in jhsIDs.enumerated() {
             try Task.checkCancellation()
@@ -388,11 +473,18 @@ actor CardUpdater {
             if let value=fresh[cid] {input=value}
             else {let details=try await database.details(cid:cid);input=(details.card.passcode,details.names)}
             let known=try await database.verifiedJHSIDs(cid:cid)
-            jhsUpdates.append(try await refreshJHS(cid:cid,passcode:input.0,names:input.1,known:known))
+            var expected=Set<String>()
+            for pack in plan.packs where pack.locale=="ja" && pack.date>PrintingIdentity.baselineDate {
+                for card in members[pack.locale+":"+pack.id] ?? [] where card.id==cid {
+                    for rarity in card.rarities {if let rid=rarity.rid {expected.insert(pack.id+":konami:ocg:rid:"+rid)}}
+                }
+            }
+            let lookup=try await database.jhsLookup(cid:cid,payload:payloadByCID[cid],additionalExpected:expected)
+            jhsUpdates.append(try await refreshJHS(cid:cid,passcode:input.0,names:input.1,known:known,lookup:lookup))
         }
         try Task.checkCancellation()
         await progress("校验并保存资料")
-        try await database.applyUpdate(cards:payloads,packs:plan.packs,members:members,banlists:banlists,neuronVersion:plan.neuron.version,jhs:jhsUpdates,translations:translations)
+        try await database.applyUpdate(cards:payloads,packs:plan.packs,members:members,banlists:banlists,neuronVersion:plan.neuron.version,jhs:jhsUpdates,translations:translations,artworks:artworks)
     }
 }
 
@@ -498,14 +590,17 @@ final class CardCatalog {
         do {
             try await task.value
             for source in plan.affectedSources {sourceStatuses[source] = .init(phase:.complete,detail:"已校验并保存到本机")}
-            let unresolved=try await database.pendingJHSCardIDs()
+            let unresolved=try await database.pendingJHSCardIDs(dueOnly:false)
             if !unresolved.isEmpty {sourceStatuses[.jhs] = .init(phase:.pending,detail:"\(unresolved.count) 张卡牌尚未查到或核实版本，下次继续补齐")}
             let nwPending=try await database.pendingNWCardIDs(),cnPending=try await database.pendingOfficialTextIDs()
+            let artworkPending=try await database.pendingArtworkCardIDs(dueOnly:false)
+            if !artworkPending.isEmpty {sourceStatuses[.cards] = .init(phase:.pending,detail:"\(artworkPending.count) 张卡牌的收录卡图映射待补齐")}
             if !nwPending.isEmpty {sourceStatuses[.translations] = .init(phase:.pending,detail:"\(nwPending.count) 张名称或文本待补齐，下次继续尝试")}
             if !cnPending.isEmpty {sourceStatuses[.cnPacks] = .init(phase:.pending,detail:"\(cnPending.count) 张官方简中名称或文本待补齐，下次继续尝试")}
             localSources=try await database.updateSourceOverview()
             metadata=try await database.metadata();revision+=1;artworkRevision+=1;pendingUpdate=nil;startupResolved=true;message=unresolved.isEmpty ? "资料更新完成。":"资料已更新，仍有 \(unresolved.count) 张卡牌的集换社版本待补齐，下次继续尝试。"
             if !nwPending.isEmpty || !cnPending.isEmpty {message="资料已更新，仍有名称或文本待补齐，下次检查更新时继续尝试。"}
+            if !artworkPending.isEmpty {message="资料已更新，仍有 \(artworkPending.count) 张卡牌的收录卡图映射待补齐，下次继续尝试。"}
         } catch {
             for source in plan.affectedSources {sourceStatuses[source] = .init(phase:task.isCancelled ? .cancelled:.failed,detail:"未提交本次资料，本机版本已保留")}
             if task.isCancelled {message="已取消更新，本机资料已保留。";skipUpdate()}

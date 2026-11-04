@@ -25,6 +25,7 @@ struct ContentView: View {
     @State private var location=LocationPermissionStore()
     @State private var selectedTab:AppTab = .home
     @State private var matchNotifications=JHSMatchNotifications.shared
+    @State private var autoEnrollment = MatchAutoEnrollmentStore.shared
     @State private var notificationResult:JHSMatchNotificationRoute?
     @State private var openingNotification=false
     @State private var launchPhase: AppLaunchPhase
@@ -41,6 +42,12 @@ struct ContentView: View {
 
     var body:some View {
         launchRoot.environment(registrationAccessory)
+            .sheet(isPresented: $autoEnrollment.showsSchedules) {
+                NavigationStack {
+                    MatchAutoEnrollmentScreen()
+                        .toolbar { ToolbarItem(placement: .topBarLeading) { Button("关闭") { autoEnrollment.showsSchedules = false } } }
+                }.environment(store.account)
+            }
             .safeAreaInset(edge:.bottom,spacing:0) {
                 if store.catalog.isUpdating {
                     HStack(alignment:.top,spacing:12) {
@@ -67,6 +74,15 @@ struct ContentView: View {
             .onChange(of:launchPhase){_,_ in openMatchNotification()}
             .task {await prepareForFirstFrame()}
             .task {await store.news.loadInitial()}
+            .task(id: store.account.sessionVersion) { await autoEnrollment.importLaunchRequests(account: store.account) }
+            .task(id: scenePhase) {
+                autoEnrollment.setActive(scenePhase == .active)
+                guard scenePhase == .active else { return }
+                while !Task.isCancelled {
+                    await autoEnrollment.tick(account: store.account)
+                    do { try await Task.sleep(for: .seconds(1)) } catch { return }
+                }
+            }
             .task(id:store.jhs.session?.token){JHSMatchJobsStore.shared.configure(session:store.jhs.session)}
             .task(id:"\(store.account.sessionVersion.uuidString)-\(launchPhase == .entered)") {
                 guard launchPhase == .entered else { return }
@@ -86,6 +102,7 @@ struct ContentView: View {
                 if resolved,launchPhase == .loading {revealEntryPrompt();enterApplication()}
             }
             .onChange(of:scenePhase){_,phase in
+                autoEnrollment.setActive(phase == .active)
                 if phase == .active, launchPhase == .entered { Task { await store.account.refresh(force:false) } }
                 if phase == .active {JHSMatchJobsStore.shared.endBackgroundTime();JHSMatchJobsStore.shared.configure(session:store.jhs.session);openMatchNotification()}
                 if phase == .background {duel.cancelSearch();JHSMatchJobsStore.shared.backgroundTime()}

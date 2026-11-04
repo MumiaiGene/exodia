@@ -22,6 +22,7 @@ struct ProfileScreen: View {
             if account.isLoggedIn {
                 Section("一起来决斗") {
                     personalMatchCard
+                    NavigationLink { MatchAutoEnrollmentScreen() } label: { Label("自动报名", systemImage: "clock.badge.checkmark") }
                     profileRow("比赛订单",subtitle:"",icon:"receipt",destination:.orders)
                     profileRow("消息中心",subtitle:account.unreadCount.map{"\($0) 条未读消息"} ?? "赛事通知",icon:"bell",destination:.messages)
                 }

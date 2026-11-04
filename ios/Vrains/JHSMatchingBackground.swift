@@ -158,6 +158,10 @@ struct JHSMatchNotificationRoute:Identifiable {let id:UUID}
         pendingJobID=id
     }
     nonisolated func userNotificationCenter(_ center:UNUserNotificationCenter,didReceive response:UNNotificationResponse,withCompletionHandler completionHandler:@escaping ()->Void) {
+        if response.actionIdentifier == UNNotificationDefaultActionIdentifier,
+           response.notification.request.content.userInfo["matchAutoEnrollment"] as? Bool == true {
+            Task { @MainActor in MatchAutoEnrollmentStore.shared.showsSchedules = true }
+        }
         let raw=response.notification.request.content.userInfo[Self.jobKey] as? String
         if response.actionIdentifier==UNNotificationDefaultActionIdentifier,let raw,let id=UUID(uuidString:raw) {
             Task{@MainActor in self.pendingJobID=id}

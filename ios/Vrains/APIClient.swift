@@ -125,6 +125,10 @@ actor SignatureClock {
     private var offset: TimeInterval = 0
     private var checkedAt = Date.distantPast
     init(transport: any APITransport) { self.transport = transport }
+    func date() async -> Date {
+        _ = await timestamp()
+        return Date.now.addingTimeInterval(offset)
+    }
     func timestamp() async -> Int64 {
         if Date.now.timeIntervalSince(checkedAt) > 300 {
             checkedAt = .now
@@ -150,6 +154,7 @@ struct BusinessAPI: Sendable {
         self.transport = transport
         clock = SignatureClock(transport: transport)
     }
+    func serverDate() async -> Date { await clock.date() }
     func request(_ path: String, method: String = "GET", form: [String: String] = [:], token: String? = nil, includeEnvelope: Bool = false) async throws -> APIValue {
         var components = URLComponents(url: Self.baseURL.appendingPathComponent(path), resolvingAgainstBaseURL: false)!
         if method == "GET" || method == "DELETE", !form.isEmpty {

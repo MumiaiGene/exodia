@@ -125,6 +125,8 @@ struct MatchSummaryScreen: View {
     @State private var withdrawing = false
     @State private var withdrawalError: String?
     @State private var enrollment = MatchEnrollment()
+    @State private var autoEnrollment = MatchAutoEnrollmentStore.shared
+    @State private var confirmingAutoEnrollment = false
     @State private var loadedSessionVersion: UUID?
     @State private var resultsRefreshVersion = UUID()
     @State private var gradeSubmissions: [String: MatchGradeSubmission] = [:]
@@ -178,6 +180,13 @@ struct MatchSummaryScreen: View {
         .onChange(of: account.sessionVersion) { _, _ in gradeTarget = nil; gradeSubmissions = [:] }
         .refreshable { await load(); resultsRefreshVersion = UUID() }
         .sheet(isPresented: $showingLogin) { LoginSheet() }
+        .confirmationDialog("安排自动报名？", isPresented: $confirmingAutoEnrollment, titleVisibility: .visible) {
+            Button("安排自动报名") {
+                if let detail { Task { await autoEnrollment.schedule(detail, account: account) } }
+            }
+        } message: {
+            Text("请在开放前打开 App 并保持前台。届时使用当前账号自动尝试报名；锁屏或后台无法保证执行。参赛条件和费用以比赛说明为准。")
+        }
         .sheet(item: $gradeTarget) { target in
             MatchGradeSheet(target: target, submission: target.submission) { grade in
                 let viewerIDs = Set([account.profile?.displayID, account.session?.userID].compactMap { $0 })
@@ -243,6 +252,18 @@ struct MatchSummaryScreen: View {
                     if showsOwnParticipation { checkInStatus(detail) }
                     Spacer()
                 }.padding(.top, 2)
+                if detail.awaitingOpening(), !detail.onlinePayment, !detail.requiresDeck, !detail.backup, detail.signupStartsAt != nil {
+                    if let job = autoEnrollment.job(matchID: detail.id, userID: account.session?.userID), job.status != .cancelled {
+                        NavigationLink { MatchAutoEnrollmentScreen() } label: {
+                            Label("自动报名 · " + job.status.title, systemImage: "clock.badge.checkmark")
+                        }
+                    } else {
+                        Button {
+                            if account.isLoggedIn { confirmingAutoEnrollment = true } else { showingLogin = true }
+                        } label: { Label("开放时自动报名", systemImage: "clock.badge.checkmark") }
+                    }
+                    if let error = autoEnrollment.error { Text(error).font(.caption).foregroundStyle(.red) }
+                }
             } else if showsOwnParticipation {
                 checkInStatus(detail)
             }
@@ -279,7 +300,12 @@ struct MatchSummaryScreen: View {
             } else if detail.canRegister {
                 Button {
                     if account.isLoggedIn {
-                        Task { await enrollment.run(detail: detail, account: account); if enrollment.completed { await load() } }
+                        Task {
+                            await enrollment.run(detail: detail, account: account, beforeDispatch: {
+                                try autoEnrollment.recordManualDispatch(matchID: detail.id, userID: account.session?.userID)
+                            })
+                            if enrollment.completed { await load() }
+                        }
                     } else { showingLogin = true }
                 } label: {
                     HStack(spacing: 8) {
@@ -307,6 +333,7 @@ struct MatchSummaryScreen: View {
             await load()
             if let errorMessage { withdrawalError = errorMessage }
             else if self.detail?.isSignedUp == true { withdrawalError = "服务端仍显示已报名，尚未确认退赛成功，请刷新后重试。" }
+            else if let userID = account.session?.userID { MatchEnrollmentFence.release(userID: userID, matchID: detail.id) }
         } catch { withdrawalError = error is URLError ? "网络连接失败，暂时无法确认退赛结果，请刷新后重试。" : error.localizedDescription }
     }
     @ViewBuilder private func richSection(_ title: String, html: String) -> some View {
@@ -373,10 +400,14 @@ final class MatchEnrollment {
         default: "报名"
         }
     }
-    func run(detail: MatchDetail, account: AccountStore, ticket: String? = nil, pause: @escaping () async throws -> Void = { try await Task.sleep(for: .seconds(5)) }) async {
+    func run(detail: MatchDetail, account: AccountStore, ticket: String? = nil,
+             beforeDispatch: () throws -> Void = {},
+             pause: @escaping () async throws -> Void = { try await Task.sleep(for: .seconds(5)) }) async {
         guard !busy, !dispatched else { return }
         error = nil
         do {
+            let version = account.sessionVersion
+            guard let userID = account.session?.userID else { throw APIError.sessionExpired }
             guard detail.canRegister else { throw APIError.business(0, "当前比赛不可报名。") }
             if detail.hasOrder {
                 phase = .confirming
@@ -394,6 +425,10 @@ final class MatchEnrollment {
             phase = .checking
             _ = try await account.fetchAuthenticated("/v1/match/player/check/" + detail.id)
             try Task.checkCancellation()
+            guard version == account.sessionVersion else { throw CancellationError() }
+            try MatchEnrollmentFence.claim(userID: userID, matchID: detail.id)
+            do { try beforeDispatch() }
+            catch { MatchEnrollmentFence.release(userID: userID, matchID: detail.id); throw error }
             // Never automatically repeat this state-changing GET after dispatch.
             phase = .submitting; dispatched = true
             do {

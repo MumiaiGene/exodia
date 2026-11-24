@@ -22,7 +22,7 @@ struct MatchDetail: Sendable {
     let privacy: String?
     let registrationMessage: String?
     let signupStartsAt: String?
-    let requiresDeck: Bool
+    let requiresDeck: Bool?
     let usesQueue: Bool
     let onlinePayment: Bool
     let role: String?
@@ -51,7 +51,7 @@ struct MatchDetail: Sendable {
         remarks = desc["remarks"].text; prizes = desc["prize_desc"].text; privacy = info["privacy"].text
         registrationMessage = data["bottom"]["title"]["text"].text
         signupStartsAt = info["SignUpStartAt"].text.flatMap { $0.hasPrefix("1970") ? nil : $0 }
-        requiresDeck = info["IsDeck"].flag ?? false
+        requiresDeck = info["IsDeck"].flag
         usesQueue = info["is_queue"].flag ?? false
         onlinePayment = info["IsOnlinePayment"].int == 1
         role = state?["role"].text ?? data["role"].text
@@ -76,6 +76,10 @@ struct MatchDetail: Sendable {
     }
     var canRegister: Bool { statusID == 2 && !isSignedUp && !isFrozen && errorCode == 0 && !awaitingOpening() && (!isFull || hasOrder) }
     var hasParticipated: Bool { isSignedUp || role == "player" }
+    var canSubmitDeck: Bool { hasParticipated && requiresDeck == true && statusID == 2 && !backup && !isFrozen }
+    var deckFormat: CardFormat? {
+        switch environment { case "简体中文": .simplified; case "OCG": .ocg; default: nil }
+    }
     var checkInStatus: String {
         switch hasCheckedIn { case true: "已签到"; case false: "未签到"; case nil: "签到状态未知" }
     }
@@ -129,55 +133,98 @@ struct MatchSummaryScreen: View {
     @State private var resultsRefreshVersion = UUID()
     @State private var gradeSubmissions: [String: MatchGradeSubmission] = [:]
     @State private var gradeTarget: MatchGradeTarget?
+    @State private var showingDeckSubmission = false
     private var showsResults: Bool {
         account.isLoggedIn && loadedSessionVersion == account.sessionVersion && detail?.canViewPersonalResults == true
     }
     private var showsOwnParticipation: Bool {
         account.isLoggedIn && loadedSessionVersion == account.sessionVersion && detail?.hasParticipated == true
     }
+    private var canWithdraw: Bool {
+        showsOwnParticipation && detail?.statusID == 2 && detail?.isSignedUp == true
+            && (match.startsAt.map { $0 > Date.now } ?? true)
+    }
     var body: some View {
         List {
             if let detail {
-                Section { header(detail) }.listRowBackground(Color.clear)
-                    .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0))
-                if showsResults, detailTab == 1 {
-                    MatchPairingsSection(match: match, status: detail.statusID ?? 0, refreshVersion: resultsRefreshVersion, gradeTarget: $gradeTarget, submissions: $gradeSubmissions)
+                Section {summary(detail)}
+                if showsResults {
+                    Section {
+                        Picker("比赛详情",selection:Binding(get:{detailTab},set:{tab in
+                            if tab == 1,detailTab != 1 {resultsRefreshVersion=UUID()}
+                            detailTab=tab
+                        })) {
+                            Text("信息").tag(0); Text("对局").tag(1); Text("排名").tag(2)
+                        }.pickerStyle(.segmented).accessibilityIdentifier("match.detail.tabs")
+                    }.listRowBackground(Color.clear)
+                        .listRowInsets(EdgeInsets(top:0,leading:0,bottom:0,trailing:0))
+                }
+                if let errorMessage {feedback(errorMessage)}
+                if let message=enrollment.error {feedback(message)}
+                if let orderID=enrollment.orderID {
+                    Section {
+                        LabeledContent("订单号",value:orderID)
+                        Text("待支付，请在小程序完成支付。").font(.footnote).foregroundStyle(Design.secondary)
+                    }
+                }
+                if showsResults,detailTab == 1 {
+                    MatchPairingsSection(match:match,status:detail.statusID ?? 0,refreshVersion:resultsRefreshVersion,gradeTarget:$gradeTarget,submissions:$gradeSubmissions)
                         .id("pairings-\(match.id)-\(account.sessionVersion)-\(resultsRefreshVersion)")
-                } else if showsResults, detailTab == 2 {
-                    MatchResultsSection(match: match, showsKnockout: false, status: detail.statusID ?? 0, refreshVersion: resultsRefreshVersion)
+                } else if showsResults,detailTab == 2 {
+                    MatchResultsSection(match:match,showsKnockout:false,status:detail.statusID ?? 0,refreshVersion:resultsRefreshVersion)
                 } else {
-                Section("赛制与参赛") {
-                    if let rule = detail.rule { LabeledContent("赛制", value: rule) }
-                    if let rounds = detail.rounds, rounds > 0 { LabeledContent("轮数", value: "\(rounds) 轮") }
-                    if let winning = detail.winning, winning > 0 { LabeledContent("晋级", value: "\(winning) 强") }
-                    if let cost = detail.costText { LabeledContent("费用", value: cost) }
-                    if let condition = detail.joinCondition { LabeledContent("参赛条件", value: condition) }
-                    LabeledContent("卡表", value: detail.requiresDeck ? "需要提交" : "无提交要求")
-                    if let contact = detail.contact { LabeledContent("联系信息", value: contact).textSelection(.enabled) }
-                    if let signupStart = detail.signupStartsAt, let date = ISO8601DateFormatter().date(from: signupStart) { LabeledContent("开放报名", value: date.formatted(date: .abbreviated, time: .shortened)) }
-                }
-                if let prizes = detail.prizes { richSection("奖品说明", html: prizes) }
-                if let remarks = detail.remarks { richSection("比赛说明", html: remarks) }
-                if let privacy = detail.privacy { richSection("参赛须知", html: privacy) }
+                    information(detail)
                 }
             }
-            if isLoading { ProgressView("正在加载比赛详情") }
-            if let message = enrollment.error { Text(message).foregroundStyle(.red) }
-            if let orderID = enrollment.orderID {
-                LabeledContent("订单号", value: orderID)
-                Text("待支付，请在小程序完成支付。").foregroundStyle(.secondary)
+        }.listStyle(.insetGrouped).scrollContentBackground(.hidden).background(Design.canvas)
+        .listSectionSpacing(20)
+        .navigationTitle("比赛详情").navigationBarTitleDisplayMode(.inline)
+        .overlay {
+            if detail == nil {
+                if isLoading {ProgressView("正在加载比赛详情")}
+                else if let errorMessage {
+                    ContentUnavailableView {
+                        Label("无法读取比赛信息",systemImage:"wifi.exclamationmark")
+                    } description:{Text(errorMessage)} actions:{
+                        Button("重试") {Task {await load()}}.secondaryActionStyle()
+                    }
+                }
             }
-            if let errorMessage {
-                Text(errorMessage).foregroundStyle(.secondary)
-                Button("重试") { Task { await load() } }
+        }
+        .safeAreaInset(edge:.bottom) {
+            if let detail, !showsResults || detailTab == 0 {
+                if showsOwnParticipation,detail.canSubmitDeck {
+                    DeckActionBar {
+                        AccentButton(title:"上传卡组",icon:"square.and.arrow.up") {showingDeckSubmission=true}
+                            .disabled(isLoading || withdrawing).accessibilityIdentifier("match.deck.upload")
+                    }
+                } else if detail.statusID == 2,!showsOwnParticipation,!detail.isSignedUp,
+                          detail.awaitingOpening() || (detail.isFull && !detail.hasOrder) || detail.canRegister {
+                    DeckActionBar {registrationAction(detail)}
+                }
             }
-        }.background(Design.canvas)
-        .navigationTitle(detail?.name ?? match.name).navigationBarTitleDisplayMode(.large)
+        }
+        .toolbar {
+            if canWithdraw {
+                ToolbarItem(placement:.topBarTrailing) {
+                    Menu {
+                        Button(role:.destructive) {confirmingWithdrawal=true} label:{
+                            Label("退出比赛",systemImage:"rectangle.portrait.and.arrow.right")
+                        }.accessibilityIdentifier("match.detail.withdraw")
+                    } label:{Image(systemName:"ellipsis")}
+                        .disabled(withdrawing || isLoading)
+                        .accessibilityLabel("比赛选项").accessibilityIdentifier("match.detail.options")
+                }
+            }
+        }
         .onDisappear { accessory.action = nil }
         .task(id: "\(match.id)-\(account.sessionVersion)") { await load() }
         .onChange(of: account.sessionVersion) { _, _ in gradeTarget = nil; gradeSubmissions = [:] }
         .refreshable { await load(); resultsRefreshVersion = UUID() }
         .sheet(isPresented: $showingLogin) { LoginSheet() }
+        .sheet(isPresented:$showingDeckSubmission,onDismiss:{Task {await load()}}) {
+            if let detail {MatchDeckUploadScreen(match:detail).id(account.sessionVersion)}
+        }
         .sheet(item: $gradeTarget) { target in
             MatchGradeSheet(target: target, submission: target.submission) { grade in
                 let viewerIDs = Set([account.profile?.displayID, account.session?.userID].compactMap { $0 })
@@ -201,99 +248,136 @@ struct MatchSummaryScreen: View {
             Button("好", role: .cancel) { withdrawalError = nil }
         } message: { Text(withdrawalError ?? "") }
     }
-    private func header(_ detail: MatchDetail) -> some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(spacing: 8) {
-                Text(detail.kind)
-                    .foregroundStyle(MatchKind(id: detail.typeID ?? 0, title: detail.kind).tint)
-                    .padding(.horizontal, 10).padding(.vertical, 6)
-                    .background(MatchKind(id: detail.typeID ?? 0, title: detail.kind).tint.opacity(0.1), in: Capsule())
-                if let environment = detail.environment {
-                    Text(environment).padding(.horizontal, 10).padding(.vertical, 6)
-                        .background(Color.secondary.opacity(0.1), in: Capsule())
+    private func summary(_ detail:MatchDetail)->some View {
+        VStack(alignment:.leading,spacing:14) {
+            Text(detail.name).font(.title2.bold()).foregroundStyle(Design.ink)
+                .fixedSize(horizontal:false,vertical:true).accessibilityAddTraits(.isHeader)
+            ViewThatFits(in:.horizontal) {
+                HStack(spacing:8) {eventLabels(detail); Spacer(minLength:12); lifecycle(detail)}
+                VStack(alignment:.leading,spacing:8) {eventLabels(detail); lifecycle(detail)}
+            }
+            if !showsResults || detailTab == 0 {
+                if let start=detail.startsAt {
+                    Label(start,systemImage:"calendar").font(.subheadline).foregroundStyle(Design.secondary)
                 }
-                Spacer(minLength: 6)
-                if detail.statusID == 2, showsOwnParticipation {
-                    Text("已报名").foregroundStyle(.green)
-                        .padding(.horizontal, 8).padding(.vertical, 6)
-                        .background(Color.green.opacity(0.1), in: Capsule())
-                        .accessibilityIdentifier("match.detail.signedUp")
-                } else {
-                    Text(detail.awaitingOpening() ? "待开放" : detail.statusID == 2 && detail.isFull && !detail.hasParticipated && !detail.hasOrder ? "报名已满" : (MatchStatus.isOngoing(detail.statusID) ? "进行中" : detail.statusID.flatMap(MatchStatus.init(rawValue:))?.title) ?? "比赛")
-                        .foregroundStyle(.secondary)
-                }
-
-            }.font(.caption.weight(.semibold)).lineLimit(1)
-            HStack(alignment: .firstTextBaseline, spacing: 12) {
-                if let start = detail.startsAt { Label(start, systemImage: "clock").font(.subheadline.weight(.medium)) }
-                Spacer(minLength: 0)
-                if let count = detail.signedCount {
-                    Text(detail.capacity.map { "\(count) / \($0) 人" } ?? "\(count) 人")
-                        .font(.subheadline.weight(.medium)).foregroundStyle(.secondary).fixedSize()
+                if let address=detail.address {
+                    Label {Text(address).fixedSize(horizontal:false,vertical:true).textSelection(.enabled)}
+                        icon:{Image(systemName:"mappin.and.ellipse")}
+                        .font(.subheadline).foregroundStyle(Design.secondary)
                 }
             }
-            if let organizer = detail.organizer { Text(organizer).font(.subheadline.weight(.semibold)) }
-            if let address = detail.address {
-                Text(address).font(.subheadline).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+        }.padding(.vertical,8).frame(maxWidth:.infinity,alignment:.leading)
+    }
+    private func eventLabels(_ detail:MatchDetail)->some View {
+        HStack(spacing:8) {
+            Text(detail.kind).font(.caption.weight(.medium)).foregroundStyle(Design.secondary)
+            if let format=detail.deckFormat {DeckFormatTag(format:format)}
+        }
+    }
+    private func lifecycle(_ detail:MatchDetail)->some View {
+        Text(detail.statusID == 2 && showsOwnParticipation ? "已报名" : detail.awaitingOpening() ? "待开放" : detail.statusID == 2 && detail.isFull && !detail.hasParticipated && !detail.hasOrder ? "报名已满" : MatchStatus.isOngoing(detail.statusID) ? "进行中" : detail.statusID.flatMap(MatchStatus.init(rawValue:))?.title ?? "比赛")
+            .font(.caption.weight(.medium))
+            .foregroundStyle(showsOwnParticipation && detail.statusID == 2 ? Color.green : Design.secondary)
+            .accessibilityIdentifier(detail.statusID == 2 && showsOwnParticipation ? "match.detail.signedUp" : "match.detail.status")
+    }
+    @ViewBuilder private func information(_ detail:MatchDetail)->some View {
+        if showsOwnParticipation {
+            Section {
+                LabeledContent("签到状态") {checkInStatus(detail)}
+                LabeledContent("卡组要求",value:deckRequirement(detail))
+                if withdrawing {ProgressView("正在退赛")}
+            } header:{Text("我的参赛")} footer:{
+                if detail.requiresDeck == true,!detail.canSubmitDeck {
+                    Text("当前比赛状态不允许提交卡组。")
+                }
             }
-            if detail.statusID == 2 {
-                HStack(spacing: 12) {
-                    registrationAction(detail)
-                    if showsOwnParticipation { checkInStatus(detail) }
-                    Spacer()
-                }.padding(.top, 2)
-            } else if showsOwnParticipation {
-                checkInStatus(detail)
+        }
+        if detail.rule != nil || (detail.rounds ?? 0)>0 || (detail.winning ?? 0)>0 {
+            Section("赛制") {
+                if let rule=detail.rule {informationText("赛制",value:rule)}
+                if let rounds=detail.rounds,rounds>0 {LabeledContent("轮数",value:"\(rounds) 轮")}
+                if let winning=detail.winning,winning>0 {LabeledContent("晋级",value:"\(winning) 强")}
             }
-            if showsResults {
-                Picker("比赛详情", selection: Binding(get: { detailTab }, set: { tab in
-                    if tab == 1, detailTab != 1 { resultsRefreshVersion = UUID() }
-                    detailTab = tab
-                })) {
-                    Text("比赛信息").tag(0); Text("比赛对局").tag(1); Text("瑞士轮").tag(2)
-                }.pickerStyle(.segmented).padding(.top, 6).accessibilityIdentifier("match.detail.tabs")
+        }
+        Section("报名信息") {
+            if let cost=detail.costText {LabeledContent("费用",value:cost)}
+            if let count=detail.signedCount {
+                LabeledContent("参赛人数",value:detail.capacity.map {"\(count) / \($0) 人"} ?? "\(count) 人")
             }
-        }.padding(.vertical, 4).labelStyle(.titleAndIcon)
+            if let signupStart=detail.signupStartsAt,let date=ISO8601DateFormatter().date(from:signupStart) {
+                LabeledContent("开放报名",value:registrationDateText(date))
+            }
+            if !showsOwnParticipation {LabeledContent("卡组要求",value:deckRequirement(detail))}
+            if let condition=detail.joinCondition {informationText("参赛条件",value:condition)}
+        }
+        if detail.organizer != nil || detail.contact != nil {
+            Section("主办与联系") {
+                if let organizer=detail.organizer {informationText("主办方",value:organizer)}
+                if let contact=detail.contact {informationText("联系方式",value:contact).textSelection(.enabled)}
+            }
+        }
+        if [detail.remarks,detail.prizes,detail.privacy].contains(where:{$0?.isEmpty == false}) {
+            Section("详细说明") {
+                richLink("比赛说明",html:detail.remarks)
+                richLink("奖品说明",html:detail.prizes)
+                richLink("参赛须知",html:detail.privacy)
+            }
+        }
+    }
+    private func registrationDateText(_ date:Date)->String {
+        let formatter=DateFormatter()
+        formatter.locale=Locale(identifier:"en_US_POSIX")
+        formatter.dateFormat="yyyy-MM-dd HH:mm"
+        return formatter.string(from:date)
+    }
+    private func deckRequirement(_ detail:MatchDetail)->String {
+        detail.requiresDeck.map {$0 ? "需要提交" : "无需提交"} ?? "待确认"
+    }
+    private func informationText(_ title:String,value:String)->some View {
+        ViewThatFits(in:.horizontal) {
+            HStack(alignment:.firstTextBaseline,spacing:24) {
+                Text(title).fixedSize(); Spacer(minLength:0)
+                Text(value).foregroundStyle(Design.secondary).fixedSize()
+            }
+            VStack(alignment:.leading,spacing:6) {
+                Text(title)
+                Text(value).font(.subheadline).foregroundStyle(Design.secondary)
+                    .fixedSize(horizontal:false,vertical:true)
+            }.padding(.vertical,4)
+        }
+    }
+    @ViewBuilder private func richLink(_ title:String,html:String?)->some View {
+        if let html,!html.isEmpty {
+            NavigationLink(title) {MatchRichTextScreen(title:title,html:html)}
+        }
+    }
+    private func feedback(_ message:String)->some View {
+        Section {
+            Text(message).font(.footnote).foregroundStyle(Design.secondary)
+            Button("重新加载") {Task {await load()}}
+        }
     }
     @ViewBuilder private func registrationAction(_ detail: MatchDetail) -> some View {
-            if detail.awaitingOpening() {
-                Button { } label: { Text("待开放").font(.headline).padding(.horizontal,24).frame(height:44) }
-                    .primaryActionStyle().clipShape(Capsule())
-                    .disabled(true).accessibilityIdentifier("match.detail.pending")
-            } else if detail.isSignedUp {
-                if showsOwnParticipation, match.startsAt.map({ $0 > Date.now }) ?? true {
-                    Button(role: .destructive) { confirmingWithdrawal = true } label: {
-                        HStack(spacing: 6) {
-                            if withdrawing { ProgressView() }
-                            Text(withdrawing ? "退赛中" : "退赛")
-                        }.font(.headline)
-                            .padding(.horizontal, 24).frame(height: 44).contentShape(Capsule())
-                    }.primaryActionStyle().clipShape(Capsule())
-                        .disabled(withdrawing || isLoading).accessibilityIdentifier("match.detail.withdraw")
-                }
-            } else if detail.isFull && !detail.hasOrder {
-                Button { } label: { Text("报名已满").font(.headline).padding(.horizontal,24).frame(height:44) }
-                    .primaryActionStyle().clipShape(Capsule()).disabled(true)
-                    .accessibilityIdentifier("match.detail.full")
-            } else if detail.canRegister {
-                Button {
-                    if account.isLoggedIn {
-                        Task { await enrollment.run(detail: detail, account: account); if enrollment.completed { await load() } }
-                    } else { showingLogin = true }
-                } label: {
-                    HStack(spacing: 8) {
-                        if enrollment.busy { ProgressView().tint(.white) }
-                        if enrollment.completed { Text("已报名") }
-                        else { Text(enrollment.busy ? enrollment.title : enrollment.orderID != nil || detail.hasOrder ? "待支付" : "报名") }
-                    }.font(.headline).padding(.horizontal,24).frame(height:44)
-                }.primaryActionStyle().clipShape(Capsule()).disabled(isLoading || enrollment.busy || enrollment.completed).accessibilityIdentifier("match.detail.register")
-            }
+        if detail.awaitingOpening() {
+            AccentButton(title:"待开放") {}.disabled(true).accessibilityIdentifier("match.detail.pending")
+        } else if !detail.isSignedUp,detail.isFull && !detail.hasOrder {
+            AccentButton(title:"报名已满") {}.disabled(true).accessibilityIdentifier("match.detail.full")
+        } else if enrollment.orderID != nil || (enrollment.dispatched && !enrollment.busy && !enrollment.completed) {
+            AccentButton(title:"刷新报名状态",icon:"arrow.clockwise") {Task {await load()}}
+                .disabled(isLoading).accessibilityIdentifier("match.detail.registration.refresh")
+        } else if detail.canRegister {
+            AccentButton(title:enrollment.completed ? "已报名" : enrollment.busy ? enrollment.title : enrollment.orderID != nil || detail.hasOrder ? "待支付" : "报名",
+                         isLoading:enrollment.busy) {
+                if account.isLoggedIn {
+                    Task {await enrollment.run(detail:detail,account:account); if enrollment.completed {await load()}}
+                } else {showingLogin=true}
+            }.disabled(isLoading || enrollment.busy || enrollment.completed)
+                .accessibilityIdentifier("match.detail.register")
+        }
     }
-    private func checkInStatus(_ detail: MatchDetail) -> some View {
-        Label(detail.checkInStatus, systemImage: detail.hasCheckedIn == true ? "person.crop.circle.badge.checkmark" : "person.crop.circle")
-            .font(.subheadline.weight(.medium))
-            .foregroundStyle(detail.hasCheckedIn == true ? Color.green : detail.hasCheckedIn == false ? Color.orange : Color.secondary)
+    private func checkInStatus(_ detail:MatchDetail)->some View {
+        Text(detail.checkInStatus)
+            .foregroundStyle(detail.hasCheckedIn == true ? Color.green : Design.secondary)
             .accessibilityIdentifier("match.detail.checkIn")
     }
     private func withdraw() async {
@@ -308,13 +392,6 @@ struct MatchSummaryScreen: View {
             if let errorMessage { withdrawalError = errorMessage }
             else if self.detail?.isSignedUp == true { withdrawalError = "服务端仍显示已报名，尚未确认退赛成功，请刷新后重试。" }
         } catch { withdrawalError = error is URLError ? "网络连接失败，暂时无法确认退赛结果，请刷新后重试。" : error.localizedDescription }
-    }
-    @ViewBuilder private func richSection(_ title: String, html: String) -> some View {
-        Section(title) {
-            DisclosureGroup("阅读\(title)") {
-                Text(MatchHTML.plain(html)).font(.subheadline).textSelection(.enabled)
-            }
-        }
     }
     private func load() async {
         let sessionVersion = account.sessionVersion
@@ -524,13 +601,13 @@ struct MatchResultsSection: View {
     }
     private func resultRow(_ player: MatchResultPlayer) -> some View {
         HStack(spacing: 12) {
-            Text(String(player.rank)).font(.headline).monospacedDigit().frame(width: 30)
+            Text(String(player.rank)).font(.subheadline.weight(.semibold)).monospacedDigit().foregroundStyle(Design.secondary).frame(width:30)
             AsyncImage(url: player.avatar) { image in image.resizable().scaledToFill() } placeholder: {
                 Image(systemName: "person.crop.circle.fill").resizable().foregroundStyle(.secondary)
             }.frame(width: 36, height: 36).clipShape(Circle())
             Text(player.nickname).font(.subheadline).lineLimit(2)
             Spacer(minLength: 6)
-            Text("\(player.score) 分").font(.headline).monospacedDigit().foregroundStyle(Design.accent).fixedSize()
+            Text("\(player.score) 分").font(.subheadline.weight(.semibold)).monospacedDigit().foregroundStyle(Design.ink).fixedSize()
         }.padding(.vertical, 4)
     }
     private func request(_ kind: String, page: Int) async throws -> APIValue {
@@ -659,56 +736,44 @@ struct DuelResultRow: View {
         if viewerIDs.contains(game.bUser ?? "") { return game.bResult }
         return nil
     }
-    private var outcome: (icon: String, title: String, color: Color) {
-        if !game.finished { return ("bolt.horizontal.circle.fill", "对局中", .orange) }
-        if let ownResult {
-            guard (1...4).contains(ownResult) else { return ("clock.fill", "待确认", .secondary) }
-            return (DuelResult.resultSymbol(ownResult), DuelResult.resultTitle(ownResult), DuelResult.resultColor(ownResult))
-        }
-        let result = game.aResult == 4 ? 4 : 2
-        return (DuelResult.resultSymbol(result), DuelResult.resultTitle(result), DuelResult.resultColor(result))
-    }
     var body: some View {
         VStack(spacing: 16) {
             HStack {
-                Color.clear.frame(maxWidth: .infinity).frame(height: 1)
-                Text(game.table ?? "对局").font(.caption.weight(.medium)).fixedSize()
+                Text(game.table ?? "对局").font(.caption.weight(.medium))
+                Spacer(minLength:8)
                 Text(game.statusText ?? (game.finished ? "已结束" : "进行中"))
                     .font(.caption2.weight(.medium)).foregroundStyle(statusColor)
-                    .padding(.horizontal, 8).padding(.vertical, 4)
-                    .background(statusColor.opacity(0.13), in: Capsule())
+                    .padding(.horizontal,7).padding(.vertical,3)
+                    .background(statusColor.opacity(0.1), in: Capsule())
                     .fixedSize().frame(maxWidth: .infinity, alignment: .trailing)
             }.foregroundStyle(.secondary)
             HStack(alignment: .top, spacing: 10) {
                 player(game.aName, avatar: game.aAvatar)
-                VStack(spacing: 9) {
-                    if game.finished, ownResult == nil {
-                        HStack(spacing: 12) {
-                            resultIcon(game.aResult, player: game.aName)
-                            resultIcon(game.bResult, player: game.bName)
-                        }
+                Group {
+                    if !game.finished {
+                        Text("VS").font(.subheadline.weight(.semibold)).foregroundStyle(Design.secondary)
+                    } else if let ownResult {
+                        Text((1...4).contains(ownResult) ? DuelResult.resultTitle(ownResult) : "待确认")
+                            .font(.title3.weight(.semibold)).foregroundStyle(DuelResult.resultColor(ownResult))
                     } else {
-                        Image(systemName: outcome.icon).font(.system(size: 30, weight: .semibold))
-                        Text(outcome.title).font(.caption.weight(.semibold))
+                        HStack(spacing:6) {
+                            Text(DuelResult.resultTitle(game.aResult)).foregroundStyle(DuelResult.resultColor(game.aResult))
+                            Text("·").foregroundStyle(Design.secondary)
+                            Text(DuelResult.resultTitle(game.bResult)).foregroundStyle(DuelResult.resultColor(game.bResult))
+                        }.font(.caption.weight(.semibold))
                     }
-                }.foregroundStyle(outcome.color).frame(width: 70).padding(.top, 12)
+                }.frame(width:70,height:44)
                 player(game.bName, avatar: game.bAvatar)
             }
-        }.padding(.vertical, 14).accessibilityElement(children: .combine).accessibilityIdentifier("duel.row.\(game.id)")
-    }
-    private func resultIcon(_ result: Int, player: String) -> some View {
-        return Image(systemName: DuelResult.resultSymbol(result))
-            .font(.system(size: 24, weight: .semibold))
-            .foregroundStyle(DuelResult.resultColor(result))
-            .accessibilityLabel("\(player)：\(DuelResult.resultTitle(result))")
+        }.padding(.vertical,8).accessibilityElement(children:.combine).accessibilityIdentifier("duel.row.\(game.id)")
     }
     private func player(_ name: String, avatar: URL?) -> some View {
         VStack(spacing: 8) {
             AsyncImage(url: avatar) { image in image.resizable().scaledToFill() } placeholder: {
                 Image(systemName: "person.fill").resizable().scaledToFit().padding(14).foregroundStyle(.secondary)
-            }.frame(width: 52, height: 52).background(Color.secondary.opacity(0.1), in: Circle()).clipShape(Circle())
+            }.frame(width:44,height:44).background(Color.secondary.opacity(0.1), in: Circle()).clipShape(Circle())
             Text(name).font(.subheadline.weight(.semibold)).multilineTextAlignment(.center).lineLimit(3)
-        }.frame(maxWidth: .infinity, minHeight: 106, alignment: .top)
+        }.frame(maxWidth:.infinity,minHeight:90,alignment:.top)
     }
 }
 
@@ -867,16 +932,16 @@ struct MatchPairingsSection: View {
         if !ongoing.isEmpty {
             Section("进行中的对局") {
                 ForEach(ongoing) { game in
-                    VStack {
+                    VStack(spacing:12) {
                         DuelResultRow(game: game, viewerIDs: viewerIDs)
                         if let round = rounds.first(where: { $0.games.contains(where: { $0.id == game.id }) }),
                            MatchGradeTarget.isEligible(game: game, viewerIDs: viewerIDs, status: status, backup: match.isBackup, stage: round.stage) {
-                            Button(submissions[game.id]?.phase == .submitted ? "成绩已提交" : submissions[game.id]?.phase == .uncertain ? "核对提交状态" : "提交成绩") {
+                            AccentButton(title:submissions[game.id]?.phase == .submitted ? "成绩已提交" : submissions[game.id]?.phase == .uncertain ? "核对提交状态" : "提交成绩") {
                                 if submissions[game.id] == nil { submissions[game.id] = MatchGradeSubmission() }
                                 if let submission = submissions[game.id] {
                                     gradeTarget = MatchGradeTarget(game: game, roundTitle: round.title, stage: round.stage, submission: submission)
                                 }
-                            }.primaryActionStyle().controlSize(.regular)
+                            }
                                 .accessibilityIdentifier("match.grade.open.\(game.id)")
                         }
                     }

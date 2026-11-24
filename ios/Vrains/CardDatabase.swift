@@ -90,6 +90,7 @@ actor CardDatabase {
             try execute("BEGIN IMMEDIATE;\n"+String(contentsOf:runtime,encoding:.utf8),database:pointer)
             try repairBaseline(db:pointer)
             try repairLookupPriority(db:pointer)
+            try repairCompletedJHSRetries(db:pointer)
             try execute("COMMIT;",database:pointer)
         } catch {try? execute("ROLLBACK",database:pointer);throw error}
         connection=handle
@@ -141,6 +142,12 @@ actor CardDatabase {
         // Old broad-name searches (notably 秋) may be in a long backoff. Permit
         // one immediate retry with the new order, without requeuing complete cards.
         try execute("UPDATE sync_resources SET next_retry_at=NULL WHERE source='jhs' AND resource_type='card_versions' AND status!='complete' AND EXISTS(SELECT 1 FROM jhs_expected_printings e WHERE e.cid=CAST(resource_key AS INTEGER)); INSERT INTO catalog_state VALUES ('jhs_lookup_priority_v1','1');",database:db)
+    }
+    private func repairCompletedJHSRetries(db:OpaquePointer)throws {
+        let q=try CardStatement(database:db,sql:"SELECT 1 FROM catalog_state WHERE key='jhs_completed_retries_retired_v1'")
+        guard try !q.next() else{return}
+        // Completed coverage is not a periodic refresh task. Preserve incomplete backoff and expectations.
+        try execute("UPDATE sync_resources SET next_retry_at=NULL WHERE source='jhs' AND resource_type='card_versions' AND status='complete'; INSERT INTO catalog_state VALUES ('jhs_completed_retries_retired_v1','1');",database:db)
     }
     func updateSourceOverview()throws->[CatalogSource:String] {
         let db=try open()
@@ -363,7 +370,7 @@ actor CardDatabase {
         };return result
     }
     func pendingJHSCardIDs(dueOnly:Bool=true)throws->[Int64] {
-        let condition=dueOnly ? "(status!='complete' OR EXISTS(SELECT 1 FROM jhs_expected_printings e WHERE e.cid=CAST(resource_key AS INTEGER))) AND (next_retry_at IS NULL OR next_retry_at<=strftime('%Y-%m-%dT%H:%M:%SZ','now'))":"status!='complete'"
+        let condition=dueOnly ? "status!='complete' AND (next_retry_at IS NULL OR next_retry_at<=strftime('%Y-%m-%dT%H:%M:%SZ','now'))":"status!='complete'"
         let q=try CardStatement(database:open(),sql:"SELECT CAST(resource_key AS INTEGER) FROM sync_resources WHERE source='jhs' AND resource_type='card_versions' AND "+condition+" ORDER BY CASE status WHEN 'complete' THEN 1 ELSE 0 END,(SELECT max(k.release_date) FROM jhs_expected_printings e JOIN packs k ON k.locale='ja' AND k.pid=e.pid WHERE e.cid=CAST(resource_key AS INTEGER)) DESC,CAST(resource_key AS INTEGER) DESC")
         var ids:[Int64]=[];while try q.next(){if let cid=q.integer(0),cid>0 {ids.append(cid)}};return ids
     }
@@ -456,6 +463,32 @@ actor CardDatabase {
             if let i=index[cid]{if !result[i].rarities.contains(rarity){result[i].rarities.append(rarity)}}
             else{index[cid]=result.count;result.append(.init(id:cid,name:q.text(1)!,rarities:[rarity]))}
         };return result
+    }
+    func collectionCardArtworks(_ pack:CollectionPack)throws->[CollectionCardArtwork] {
+        let cards=try collectionCards(pack)
+        let q=try CardStatement(database:open(),sql:"SELECT DISTINCT p.cid,r.source_rid,a.ciid FROM printings p JOIN printing_artworks a USING(printing_id) JOIN rarities r USING(rarity_id) JOIN app_pack_members m ON m.locale=p.locale AND m.pid=p.pid AND m.cid=p.cid AND m.rarity_id=p.rarity_id WHERE p.locale=? AND p.pid=? AND a.ciid>0")
+        try q.bind([.text(pack.locale),.text(pack.id)])
+        var mappings:[Int64:[String:Set<Int64>]]=[:]
+        while try q.next() {
+            if let cid=q.integer(0),let rid=q.text(1),let ciid=q.integer(2) {
+                mappings[cid,default:[:]][rid,default:[]].insert(ciid)
+            }
+        }
+        var rows:[CollectionCardArtwork]=[]
+        for card in cards {
+            var groups:[Int64:[CollectionRarity]]=[:]
+            for rarity in card.rarities {
+                let images=rarity.rid.flatMap {mappings[card.id]?[$0]} ?? []
+                if images.isEmpty {groups[0,default:[]].append(rarity)}
+                else {for ciid in images {groups[ciid,default:[]].append(rarity)}}
+            }
+            // Keep membership order; merge rarities only when they share this pack's actual image.
+            let images=groups.keys.filter{$0>0}.sorted()+(groups[0] == nil ? []:[0])
+            for ciid in images {
+                rows.append(.init(cid:card.id,name:card.name,ciid:ciid>0 ? ciid:nil,rarities:groups[ciid]!))
+            }
+        }
+        return rows
     }
     func collectionCardsComplete(_ pack:CollectionPack)throws->Bool {try completePackIDs(locale:pack.locale).contains(pack.id)}
     func completePackIDs(locale:String)throws->Set<String> {
@@ -641,8 +674,8 @@ actor CardDatabase {
         while try expected.next(){if !covered.contains(expected.text(0)!+":"+expected.text(1)!) {missing+=1}}
         let hasVersions=try !printings(cid:cid).isEmpty
         let complete=querySucceeded && hasVersions && missing==0
-        let q=try CardStatement(database:db,sql:"UPDATE sync_resources SET status=?,last_error=CASE WHEN ? THEN NULL ELSE COALESCE(?,last_error) END,next_retry_at=strftime('%Y-%m-%dT%H:%M:%SZ',?,CASE WHEN ? THEN '+7 days' ELSE '+'||min(24,max(1,attempts)*2)||' hours' END) WHERE source='jhs' AND resource_type='card_versions' AND resource_key=?")
-        try q.execute([.text(complete ? "complete":"partial"),.integer(complete ? 1:0),missing>0 ? .text("仍有 \(missing) 条基线后官方收录待补齐"):.null,.text(stamp),.integer(complete ? 1:0),.text(String(cid))])
+        let q=try CardStatement(database:db,sql:"UPDATE sync_resources SET status=?,last_error=CASE WHEN ? THEN NULL ELSE COALESCE(?,last_error) END,next_retry_at=CASE WHEN ? THEN NULL ELSE strftime('%Y-%m-%dT%H:%M:%SZ',?,'+'||min(24,max(1,attempts)*2)||' hours') END WHERE source='jhs' AND resource_type='card_versions' AND resource_key=?")
+        try q.execute([.text(complete ? "complete":"partial"),.integer(complete ? 1:0),missing>0 ? .text("仍有 \(missing) 条基线后官方收录待补齐"):.null,.integer(complete ? 1:0),.text(stamp),.text(String(cid))])
     }
     private func rebuildJHSLinks(cid:Int64,stamp:String,db:OpaquePointer)throws->Set<String> {
         let official=try officialPrintings(cid:cid),versions=try printings(cid:cid)

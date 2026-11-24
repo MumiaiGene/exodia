@@ -43,6 +43,7 @@ struct Deck: Identifiable, Codable, Hashable {
     var sideCardArtworks: [DeckCard]? = nil
     var isFavorite: Bool? = nil
     var banlist: String? = nil
+    var remoteDeckIDs: [String: String]? = nil
     var mainArtworks: [DeckCard] { mainCardArtworks ?? (mainCardCIDs ?? []).map { DeckCard(cid:$0) } }
     var extraArtworks: [DeckCard] { extraCardArtworks ?? (extraCardCIDs ?? []).map { DeckCard(cid:$0) } }
     var sideArtworks: [DeckCard] { sideCardArtworks ?? (sideCardCIDs ?? []).map { DeckCard(cid:$0) } }
@@ -175,10 +176,43 @@ final class AppStore {
         persistDecks()
         return deck
     }
+    func rememberRemoteDeck(_ remoteID: String, for id: String, userID: String) {
+        guard let index = decks.firstIndex(where: { $0.id == id }) else { return }
+        var links = decks[index].remoteDeckIDs ?? [:]
+        links[userID] = remoteID
+        decks[index].remoteDeckIDs = links
+        persistDecks()
+    }
+    func localDeck(remoteID: String, userID: String) -> Deck? {
+        myDecks.first { $0.remoteDeckIDs?[userID] == remoteID }
+    }
+    func forgetRemoteDeck(_ remoteID: String, userID: String) {
+        var changed=false
+        for index in decks.indices where decks[index].remoteDeckIDs?[userID]==remoteID {
+            var links=decks[index].remoteDeckIDs ?? [:]
+            links.removeValue(forKey:userID)
+            decks[index].remoteDeckIDs=links.isEmpty ? nil : links
+            changed=true
+        }
+        if changed { persistDecks() }
+    }
+    @discardableResult
+    func importRemoteDeck(_ deck: Deck, remoteID: String, userID: String) -> Deck {
+        if let existing=localDeck(remoteID:remoteID,userID:userID) { return existing }
+        var local=deck
+        local.id=UUID().uuidString
+        local.isMine=true
+        local.remoteDeckIDs=[userID:remoteID]
+        saveDeck(local)
+        return decks.first { $0.id==local.id } ?? local
+    }
     func saveDeck(_ deck: Deck) {
         var updated=deck;updated.isMine=true;updated.updatedAt = .now
         if updated.mainCardCIDs != nil || updated.mainCardArtworks != nil { updated.cards=updated.mainCards.count+updated.extraCards.count+updated.sideCards.count }
-        if let index=decks.firstIndex(where:{$0.id==deck.id}) {decks[index]=updated}
+        if let index=decks.firstIndex(where:{$0.id==deck.id}) {
+            updated.remoteDeckIDs = decks[index].remoteDeckIDs
+            decks[index]=updated
+        }
         else {decks.insert(updated,at:0)}
         persistDecks()
     }
@@ -188,6 +222,7 @@ final class AppStore {
     }
     @discardableResult func duplicateDeck(_ source:Deck)->Deck {
         var copy=source;copy.id=UUID().uuidString;copy.name=source.name+" 副本";copy.updatedAt = .now;copy.isMine=true
+        copy.remoteDeckIDs = nil
         decks.insert(copy,at:0);persistDecks();return copy
     }
     func deleteDeck(id:String) {

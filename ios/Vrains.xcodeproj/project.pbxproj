@@ -7,6 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+        FA7200000000000000000001 /* RemoteDecks.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA7200000000000000000002; };
+        FA7400000000000000000001 /* MatchDeckScreens.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA7400000000000000000002; };
+        FA7300000000000000000001 /* MatchDeckSubmission.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA7300000000000000000002; };
         FB1200000000000000000001 /* CardImageExport.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB1200000000000000000002; };
 FA9100000000000000000001 = {isa = PBXBuildFile; fileRef = FA9100000000000000000002; };
 FA9000000000000000000001 = {isa = PBXBuildFile; fileRef = FA9000000000000000000002; };
@@ -61,6 +64,9 @@ FD0000000000000000000001 = {isa = PBXBuildFile; fileRef = FE00000000000000000000
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+        FA7200000000000000000002 /* RemoteDecks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteDecks.swift; sourceTree = "<group>"; };
+        FA7400000000000000000002 /* MatchDeckScreens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MatchDeckScreens.swift; sourceTree = "<group>"; };
+        FA7300000000000000000002 /* MatchDeckSubmission.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MatchDeckSubmission.swift; sourceTree = "<group>"; };
         AF2300000000000000000001 = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = ../config/signing.xcconfig; sourceTree = SOURCE_ROOT; };
         FB1200000000000000000002 /* CardImageExport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CardImageExport.swift; sourceTree = "<group>"; };
 FA9100000000000000000002 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JHSMatchingBackground.swift; sourceTree = "<group>"; };
@@ -157,6 +163,9 @@ A00000000000000000000003 /* VrainsApp.swift */,
                 FB1200000000000000000002 /* CardImageExport.swift */,
                 FB0000000000000000000002 /* DeckDragging.swift */,
                 FA0000000000000000000005 /* DeckScreens.swift */,
+                FA7200000000000000000002 /* RemoteDecks.swift */,
+                FA7400000000000000000002 /* MatchDeckScreens.swift */,
+                FA7300000000000000000002 /* MatchDeckSubmission.swift */,
                 FA0000000000000000000003 /* DeckEditing.swift */,
 				B00000000000000000000004 /* DetailSheets.swift */,
 				B00000000000000000000005 /* ProfileScreen.swift */,
@@ -234,12 +243,13 @@ FA9000000000000000000004,
 			};
 			buildConfigurationList = A0000000000000000000000E /* Build configuration list for PBXProject "Vrains" */;
 			compatibilityVersion = "Xcode 14.0";
-			developmentRegion = en;
+			developmentRegion = "zh-Hans";
 			hasScannedForEncodings = 0;
 			knownRegions = (
 				en,
 				Base,
 				"zh-Hans",
+				"zh-Hant",
 			);
 			mainGroup = A00000000000000000000006;
 			productRefGroup = A00000000000000000000008 /* Products */;
@@ -325,6 +335,9 @@ A00000000000000000000001 /* VrainsApp.swift in Sources */,
                 FB1200000000000000000001 /* CardImageExport.swift in Sources */,
                 FB0000000000000000000001 /* DeckDragging.swift in Sources */,
                 FA0000000000000000000004 /* DeckScreens.swift in Sources */,
+                FA7200000000000000000001 /* RemoteDecks.swift in Sources */,
+                FA7400000000000000000001 /* MatchDeckScreens.swift in Sources */,
+                FA7300000000000000000001 /* MatchDeckSubmission.swift in Sources */,
                 FA0000000000000000000002 /* DeckEditing.swift in Sources */,
 				C00000000000000000000004 /* DetailSheets.swift in Sources */,
 				C00000000000000000000005 /* ProfileScreen.swift in Sources */,

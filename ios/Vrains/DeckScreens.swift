@@ -3,17 +3,28 @@ import UniformTypeIdentifiers
 
 struct DeckLibraryScreen: View {
     @Environment(AppStore.self) private var store
+    @Environment(AccountStore.self) private var account
+    @Environment(CardCatalog.self) private var catalog
+    var serverDecks: [Deck]? = nil
+    var deleteServerDeck: ((Deck) async throws -> Void)? = nil
     @AppStorage("exodia.decks.view") private var grid = false
     @AppStorage("exodia.decks.sort") private var sortKey = DeckLibrarySort.updated.rawValue
     @AppStorage("exodia.decks.ascending") private var ascending = false
     @State private var sharingDeck:Deck?
+    @State private var uploadingDeck: Deck?
     @State private var destination: String?
     @State private var editorID: String?
     @State private var creatingDeck: Deck?
     @State private var deleting: Deck?
+    @State private var deletingServer=false
+    @State private var deletionError:String?
     @State private var rearranging = false
-    private var sort: DeckLibrarySort { DeckLibrarySort(rawValue:sortKey) ?? .updated }
-    private var decks: [Deck] { sort.sorted(store.myDecks,ascending:ascending) }
+    private var sort: DeckLibrarySort {
+        let value=DeckLibrarySort(rawValue:sortKey) ?? .updated
+        return isServer && value == .custom ? .updated : value
+    }
+    private var isServer: Bool { serverDecks != nil }
+    private var decks: [Deck] { sort.sorted(serverDecks ?? store.myDecks,ascending:ascending) }
     var body: some View {
         Group {
             if grid && !rearranging {
@@ -22,9 +33,13 @@ struct DeckLibraryScreen: View {
                         ForEach(decks) { deck in
                             Button { destination = deck.id } label: {
                                 VStack(alignment:.leading,spacing:10) {
-                                    DeckCover(deck:deck).aspectRatio(1,contentMode:.fit).clipShape(RoundedRectangle(cornerRadius:18))
+                                    DeckCover(deck:deck).aspectRatio(1,contentMode:.fit)
+                                        .overlay(alignment:.topTrailing) {
+                                            if isLinked(deck) { DuelServiceBadge().allowsHitTesting(false) }
+                                        }
+                                        .clipShape(RoundedRectangle(cornerRadius:18))
                                     Text(deck.name).font(.headline).foregroundStyle(Design.ink).lineLimit(2).frame(maxWidth:.infinity,alignment:.leading)
-                                    Text(deck.modifiedAt,format:.dateTime.year().month().day()).font(.caption).foregroundStyle(Design.secondary)
+                                    DeckFormatTag(format:deck.banlist.flatMap(CardFormat.init(rawValue:)) ?? catalog.selectedFormat)
                                 }
                             }.buttonStyle(.plain).accessibilityIdentifier("decks.confirm.\(deck.id)")
                                 .contextMenu { rowActions(deck) }
@@ -36,37 +51,44 @@ struct DeckLibraryScreen: View {
                     ForEach(decks) { deck in
                         HStack(spacing:12) {
                             Button { destination = deck.id } label: {
-                                HStack(spacing:14) {
-                                    DeckCover(deck:deck).frame(width:76,height:76).clipShape(RoundedRectangle(cornerRadius:14))
-                                    VStack(alignment:.leading,spacing:0) {
-                                        Text(deck.name).font(.headline).foregroundStyle(Design.ink).lineLimit(2)
-                                        Spacer(minLength:8)
-                                        Text("修改于 \(Design.dateText(deck.modifiedAt))").font(.caption).foregroundStyle(Design.secondary)
-                                    }.frame(maxWidth:.infinity,alignment:.leading).frame(height:76,alignment:.top)
-                                }.contentShape(Rectangle())
+                                DeckListRow(deck:deck,format:deck.banlist.flatMap(CardFormat.init(rawValue:)) ?? catalog.selectedFormat)
+                                    .contentShape(Rectangle())
                             }.buttonStyle(.plain).accessibilityIdentifier("decks.confirm.\(deck.id)")
                             if !rearranging {
                                 Menu { rowActions(deck) } label: { Image(systemName:"ellipsis").frame(width:44,height:44) }
                                     .accessibilityLabel("\(deck.name)选项").accessibilityIdentifier("decks.menu.\(deck.id)")
                             }
                         }.padding(.vertical,6)
-                    }.onMove { store.moveMyDecks(from:$0,to:$1) }
+                            .listRowBackground(
+                                Color(uiColor:.secondarySystemGroupedBackground)
+                                    .overlay(alignment:.topTrailing) {
+                                        if isLinked(deck) { DuelServiceBadge().allowsHitTesting(false) }
+                                    }
+                            )
+                    }.onMove { if !isServer { store.moveMyDecks(from:$0,to:$1) } }
                 }.listStyle(.insetGrouped).scrollContentBackground(.hidden)
                     .environment(\.editMode,.constant(rearranging ? .active : .inactive))
             }
-        }.background(Design.canvas).navigationTitle("卡组").navigationBarTitleDisplayMode(.large)
-            .overlay { if decks.isEmpty { ContentUnavailableView("创建第一个卡组",systemImage:"rectangle.stack.badge.plus",description:Text("点击右上角 +，开始构筑。")) } }
+        }.background(Design.canvas).navigationTitle(isServer ? "卡组广场" : "卡组").navigationBarTitleDisplayMode(.large)
+            .overlay {
+                if decks.isEmpty {
+                    ContentUnavailableView(isServer ? "暂无服务端卡组" : "创建第一个卡组",systemImage:"rectangle.stack.badge.plus",
+                        description:Text(isServer ? "在本地卡组中点击上传，同步到一起来决斗。" : "点击右上角 +，开始构筑。"))
+                }
+            }
             .toolbar {
                 ToolbarItemGroup(placement:.topBarTrailing) {
-                    Button { let deck=Deck.draft(); creatingDeck=deck; editorID=deck.id } label:{ Image(systemName:"plus") }
-                        .accessibilityLabel("添加卡组").accessibilityIdentifier("decks.create")
+                    if !isServer {
+                        Button { let deck=Deck.draft(); creatingDeck=deck; editorID=deck.id } label:{ Image(systemName:"plus") }
+                            .accessibilityLabel("添加卡组").accessibilityIdentifier("decks.create")
+                    }
                     Menu {
                         Section {
                             Button { grid=true;rearranging=false } label:{ Label("网格",systemImage:grid ? "checkmark":"square.grid.2x2") }
                             Button { grid=false } label:{ Label("列表",systemImage:!grid ? "checkmark":"list.bullet") }
                         }
                         Section {
-                            Picker("排序依据", selection: $sortKey) {
+                            Picker("排序依据", selection: Binding(get:{sort.rawValue},set:{sortKey=$0})) {
                                 Text("名称").tag(DeckLibrarySort.name.rawValue).accessibilityIdentifier("decks.sort.name")
                                 Text("更新时间").tag(DeckLibrarySort.updated.rawValue).accessibilityIdentifier("decks.sort.updated")
                             }
@@ -74,8 +96,10 @@ struct DeckLibraryScreen: View {
                                 Text("升序").tag(true)
                                 Text("降序").tag(false)
                             }.disabled(sort == .custom)
-                            Button { sortKey=DeckLibrarySort.custom.rawValue;grid=false;rearranging=true } label:{ Label("自定义排序",systemImage:"arrow.up.arrow.down") }
-                                .accessibilityIdentifier("decks.sort.custom")
+                            if !isServer {
+                                Button { sortKey=DeckLibrarySort.custom.rawValue;grid=false;rearranging=true } label:{ Label("自定义排序",systemImage:"arrow.up.arrow.down") }
+                                    .accessibilityIdentifier("decks.sort.custom")
+                            }
                         }
                     } label:{ Image(systemName:"ellipsis") }.accessibilityLabel("卡组显示与排序").accessibilityIdentifier("decks.options")
                 }
@@ -87,38 +111,148 @@ struct DeckLibraryScreen: View {
                         .padding(18).background(.regularMaterial).accessibilityIdentifier("decks.reorder.done")
                 }
             }
-            .navigationDestination(item:$destination) { DeckConfirmationScreen(deckID:$0) }
+            .navigationDestination(item:$destination) { id in
+                if isServer, let deck=serverDecks?.first(where:{$0.id==id}) {
+                    DeckConfirmationScreen(deckID:id,serverDeck:deck,serverUserID:account.session?.userID,deleteServerDeck:deleteServerDeck)
+                } else { DeckConfirmationScreen(deckID:id) }
+            }
             .sheet(item:Binding(get:{editorID.map{DeckEditorRoute(id:$0)}},set:{editorID=$0?.id}),onDismiss:{creatingDeck=nil}) { route in
                 DeckEditorScreen(deckID:route.id,draft:creatingDeck)
             }
             .sheet(item:$sharingDeck) {DeckShareSheet(deck:$0)}
+            .sheet(item: $uploadingDeck) { RemoteDeckUploadScreen(deck: $0) }
             .alert("删除卡组？",isPresented:Binding(get:{deleting != nil},set:{if !$0 {deleting=nil}})) {
-                Button("删除",role:.destructive) { if let deleting { store.deleteDeck(id:deleting.id) };deleting=nil }
+                Button("删除",role:.destructive) {
+                    if let deck=deleting {
+                        if isServer { Task { await removeServerDeck(deck) } }
+                        else { store.deleteDeck(id:deck.id) }
+                    }
+                    deleting=nil
+                }
                 Button("取消",role:.cancel) { deleting=nil }
-            } message:{Text("此操作会从本机删除“\(deleting?.name ?? "")”。")}
+            } message:{Text(isServer ? "从一起来决斗删除“\(deleting?.name ?? "")”？本地副本会保留，并解除关联。" : "此操作会从本机删除“\(deleting?.name ?? "")”。")}
+            .disabled(deletingServer)
+            .overlay { if deletingServer { ProgressView("正在删除服务端卡组").padding().background(.regularMaterial,in:RoundedRectangle(cornerRadius:14)) } }
+            .alert("删除失败",isPresented:Binding(get:{deletionError != nil},set:{if !$0 {deletionError=nil}})) {
+                Button("好",role:.cancel) {deletionError=nil}
+            } message:{Text(deletionError ?? "")}
+    }
+    private func isLinked(_ deck:Deck)->Bool {
+        guard !isServer,let userID=account.session?.userID else { return false }
+        return deck.remoteDeckIDs?[userID] != nil
+    }
+    private func removeServerDeck(_ deck:Deck) async {
+        guard let deleteServerDeck,!deletingServer else { return }
+        deletingServer=true
+        defer {deletingServer=false}
+        do {try await deleteServerDeck(deck)}
+        catch {if !(error is CancellationError) {deletionError=AccountStore.message(for:error)}}
     }
     @ViewBuilder private func rowActions(_ deck:Deck)->some View {
-        Button { editorID=deck.id } label:{Label("编辑",systemImage:"pencil")}
-        Button { destination=deck.id } label:{Label("确认",systemImage:"rectangle.stack")}
-        Button {sharingDeck=deck} label:{Label("分享",systemImage:"square.and.arrow.up")}
-        Button(role:.destructive) { deleting=deck } label:{Label("删除",systemImage:"trash")}
+        if isServer {
+            Button { destination=deck.id } label:{Label("查看卡组",systemImage:"rectangle.stack")}
+            Button { sharingDeck=deck } label:{Label("分享",systemImage:"square.and.arrow.up")}
+            if deleteServerDeck != nil {
+                Button(role:.destructive) {deleting=deck} label:{Label("从服务端删除",systemImage:"trash")}
+            }
+        } else {
+            Button { editorID=deck.id } label:{Label("编辑",systemImage:"pencil")}
+            Button { destination=deck.id } label:{Label("确认",systemImage:"rectangle.stack")}
+            Button {sharingDeck=deck} label:{Label("分享",systemImage:"square.and.arrow.up")}
+            Button { uploadingDeck = deck } label: { Label("上传", systemImage: "icloud.and.arrow.up") }
+            Button(role:.destructive) { deleting=deck } label:{Label("删除",systemImage:"trash")}
+        }
     }
 }
 
 private struct DeckValidationRequest:Hashable {let cards:[Int64];let revision:Int}
 
+struct DeckActionBar<Content:View>: View {
+    @ViewBuilder var content:Content
+    var body:some View {
+        VStack(alignment:.leading,spacing:10) {content}
+            .padding(18).background(Design.canvas).overlay(alignment:.top) {Divider()}
+    }
+}
+
+struct DeckListRow: View {
+    let deck: Deck
+    let format: CardFormat?
+    var body: some View {
+        HStack(spacing:14) {
+            DeckCover(deck:deck).frame(width:76,height:76).clipShape(RoundedRectangle(cornerRadius:14))
+            VStack(alignment:.leading,spacing:0) {
+                Text(deck.name).font(.headline).foregroundStyle(Design.ink).lineLimit(2)
+                Spacer(minLength:8)
+                if let format {DeckFormatTag(format:format)}
+            }.frame(maxWidth:.infinity,alignment:.leading).frame(minHeight:76,alignment:.top)
+        }
+    }
+}
+
+struct DeckFormatTag: View {
+    let format: CardFormat
+    private var title: String {
+        switch format { case .ocg:"OCG"; case .simplified:"简中"; case .tcg:"TCG" }
+    }
+    private var tint: Color {
+        switch format { case .ocg:.indigo; case .simplified:.teal; case .tcg:.orange }
+    }
+    var body: some View {
+        Text(title)
+            .font(.caption2.weight(.medium))
+            .foregroundStyle(tint)
+            .padding(.horizontal,7).padding(.vertical,3)
+            .background(tint.opacity(0.1),in:Capsule())
+            .fixedSize()
+            .accessibilityLabel("禁限卡表："+format.title)
+    }
+}
+
 private struct DeckEditorRoute: Identifiable { let id:String }
 private struct DeckDetailRoute: Identifiable { let card:CatalogCard;let artwork:DeckCard;var id:String {artwork.id} }
 
 extension Deck {
+    var modificationDateText: String {
+        modifiedAt.formatted(Date.ISO8601FormatStyle(dateSeparator:.dash,timeZone:.current).year().month().day())
+    }
     var shareText: String { String(data:(try? JSONEncoder().encode(self)) ?? Data(),encoding:.utf8) ?? name }
 }
 
 struct DeckCover:View {
     let deck:Deck
     var body:some View {
-        if let card=deck.coverCard {DeckCoverArtwork(card:card)}
-        else {DeckGeneratedCover(name:deck.name,seed:deck.id)}
+        Group {
+            if let card=deck.coverCard {DeckCoverArtwork(card:card)}
+            else {DeckGeneratedCover(name:deck.name,seed:deck.id)}
+        }
+    }
+}
+
+private struct DuelServiceBadge: View {
+    @Environment(\.colorScheme) private var colorScheme
+    var body: some View {
+        ZStack(alignment:.topLeading) {
+            DuelServiceCornerShape()
+                .fill(Color(hex:colorScheme == .dark ? 0x262E38 : 0xE7EAF0))
+            Image("DuelServiceMark").renderingMode(.template).resizable().scaledToFit()
+                .foregroundStyle(Color(hex:colorScheme == .dark ? 0x83A8CC : 0x507CAC))
+                .frame(width:18,height:13)
+                .offset(x:22,y:9)
+        }.frame(width:44,height:44)
+            .accessibilityElement(children:.ignore)
+            .accessibilityLabel("已关联一起来决斗卡组")
+    }
+}
+
+private struct DuelServiceCornerShape: Shape {
+    func path(in rect:CGRect)->Path {
+        Path { path in
+            path.move(to:CGPoint(x:rect.minX,y:rect.minY))
+            path.addLine(to:CGPoint(x:rect.maxX,y:rect.minY))
+            path.addLine(to:CGPoint(x:rect.maxX,y:rect.maxY))
+            path.closeSubpath()
+        }
     }
 }
 
@@ -208,18 +342,27 @@ struct DeckCardArtwork: View {
 
 struct DeckConfirmationScreen: View {
     @Environment(AppStore.self) private var store
+    @Environment(AccountStore.self) private var account
     @Environment(CardCatalog.self) private var catalog
     @Environment(\.dismiss) private var dismiss
     let deckID:String
+    var serverDeck: Deck? = nil
+    var serverUserID: String? = nil
+    var deleteServerDeck: ((Deck) async throws -> Void)? = nil
+    var isSelectionPreview = false
+    @State private var localDestination: String?
     @State private var sharing=false
+    @State private var uploading=false
     @State private var editing=false
     @State private var deleting=false
+    @State private var deletingServer=false
+    @State private var deletionError:String?
     @State private var selectingBanlist=false
     @State private var exporting=false
     @State private var draw=DeckDrawState()
     @State private var selected:DeckDetailRoute?
     @State private var exportMessage:String?
-    private var deck:Deck? { store.decks.first{$0.id==deckID} }
+    private var deck:Deck? { serverDeck ?? store.decks.first{$0.id==deckID} }
     private var format:CardFormat { deck?.banlist.flatMap(CardFormat.init(rawValue:)) ?? catalog.selectedFormat }
     var body:some View {
         ScrollView {
@@ -230,7 +373,13 @@ struct DeckConfirmationScreen: View {
                         VStack(alignment:.leading,spacing:8) {
                             Text(deck.name).font(.title2.bold()).foregroundStyle(Design.ink)
                             if let description=deck.deckDescription,!description.isEmpty {Text(description).font(.subheadline).foregroundStyle(Design.secondary)}
-                            Text("修改于 \(deck.modifiedAt.formatted(date:.abbreviated,time:.shortened))").font(.caption).foregroundStyle(Design.secondary)
+                            VStack(alignment:.leading,spacing:6) {
+                                HStack(spacing:6) {
+                                    Text("禁限卡表：")
+                                    DeckFormatTag(format:format)
+                                }
+                                Text("更新日期：\(deck.modificationDateText)")
+                            }.font(.caption).foregroundStyle(Design.secondary)
                         }
                     }
                     section("主卡组",cards:deck.mainArtworks,legacy:deck.mainCardCIDs == nil && deck.mainCardArtworks == nil ? deck.cards:nil)
@@ -248,27 +397,43 @@ struct DeckConfirmationScreen: View {
                     if let exportMessage {Text(exportMessage).font(.caption).foregroundStyle(Design.secondary)}
                 }.padding(18)
             }
-        }.background(Design.canvas).navigationTitle("").navigationBarTitleDisplayMode(.inline)
+        }.background(Design.canvas).navigationTitle(isSelectionPreview ? "确认比赛卡组" : "").navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                if let deck {
+                if let deck, !isSelectionPreview {
                     ToolbarItemGroup(placement:.topBarTrailing) {
                         Button {sharing=true} label:{Image(systemName:"square.and.arrow.up")}.accessibilityLabel("分享卡组")
                         Menu {
                             ControlGroup {
-                                Button { exporting=true } label:{Label("下载",systemImage:"arrow.down.to.line")}
-                                Button { store.toggleDeckFavorite(id:deck.id) } label:{Label(deck.isFavorite == true ? "取消收藏":"收藏",systemImage:deck.isFavorite == true ? "star.fill":"star")}
+                                Button {
+                                    if serverDeck != nil {
+                                        if let userID=serverUserID, userID==account.session?.userID {
+                                            localDestination=store.importRemoteDeck(deck,remoteID:deckID,userID:userID).id
+                                        }
+                                    } else { exporting=true }
+                                } label:{Label("下载",systemImage:"arrow.down.to.line")}
+                                    .disabled(serverDeck != nil && serverUserID != account.session?.userID)
+                                    .accessibilityIdentifier("deck.confirm.download")
+                                if serverDeck == nil {
+                                    Button { store.toggleDeckFavorite(id:deck.id) } label:{Label(deck.isFavorite == true ? "取消收藏":"收藏",systemImage:deck.isFavorite == true ? "star.fill":"star")}
+                                }
                                 Button {sharing=true} label:{Label("分享",systemImage:"square.and.arrow.up")}
                             }
                             Divider()
-                            Button { editing=true } label:{Label("编辑",systemImage:"pencil")}.accessibilityIdentifier("deck.confirm.edit")
-                            Button { let copy=store.duplicateDeck(deck);exportMessage="已复制为“\(copy.name)”。" } label:{Label("复制",systemImage:"doc.on.doc")}
-                            Button { selectingBanlist=true } label:{Label("禁限卡表",systemImage:"exclamationmark.shield")}
-                            Button(role:.destructive) { deleting=true } label:{Label("删除",systemImage:"trash")}
+                            if serverDeck == nil {
+                                Button { uploading = true } label: { Label("上传", systemImage: "icloud.and.arrow.up") }
+                                Button { editing=true } label:{Label("编辑",systemImage:"pencil")}.accessibilityIdentifier("deck.confirm.edit")
+                                Button { let copy=store.duplicateDeck(deck);exportMessage="已复制为“\(copy.name)”。" } label:{Label("复制",systemImage:"doc.on.doc")}
+                                Button { selectingBanlist=true } label:{Label("禁限卡表",systemImage:"exclamationmark.shield")}
+                                Button(role:.destructive) { deleting=true } label:{Label("删除",systemImage:"trash")}
+                            } else if deleteServerDeck != nil {
+                                Button(role:.destructive) {deleting=true} label:{Label("从服务端删除",systemImage:"trash")}
+                            }
                         } label:{Image(systemName:"ellipsis")}.accessibilityLabel("卡组选项").accessibilityIdentifier("deck.confirm.options")
                     }
                 }
             }
             .sheet(isPresented:$sharing) {if let deck {DeckShareSheet(deck:deck)}}
+            .sheet(isPresented: $uploading) { if let deck { RemoteDeckUploadScreen(deck: deck) } }
             .sheet(isPresented:$editing) { DeckEditorScreen(deckID:deckID) }
             .sheet(item:$selected) { CatalogCardDetailScreen(card:$0.card,initialArtwork:$0.artwork.ciid) }
             .sheet(isPresented:$selectingBanlist) {
@@ -282,20 +447,61 @@ struct DeckConfirmationScreen: View {
                 if case .failure = result {exportMessage="未能导出卡组，请重试。"}
             }
             .alert("删除这个卡组？",isPresented:$deleting) {
-                Button("删除",role:.destructive) {store.deleteDeck(id:deckID);dismiss()};Button("取消",role:.cancel){}
-            } message:{Text("删除后无法恢复。")}
+                Button("删除",role:.destructive) {
+                    if let deck,let deleteServerDeck,serverDeck != nil {
+                        deletingServer=true
+                        Task {
+                            defer {deletingServer=false}
+                            do {try await deleteServerDeck(deck);dismiss()}
+                            catch {if !(error is CancellationError) {deletionError=AccountStore.message(for:error)}}
+                        }
+                    } else {store.deleteDeck(id:deckID);dismiss()}
+                }
+                Button("取消",role:.cancel){}
+            } message:{Text(serverDeck != nil ? "从一起来决斗删除此卡组？本地副本会保留，并解除关联。" : "删除后无法恢复。")}
+            .disabled(deletingServer)
+            .overlay {if deletingServer {ProgressView("正在删除服务端卡组").padding().background(.regularMaterial,in:RoundedRectangle(cornerRadius:14))}}
+            .alert("删除失败",isPresented:Binding(get:{deletionError != nil},set:{if !$0 {deletionError=nil}})) {
+                Button("好",role:.cancel) {deletionError=nil}
+            } message:{Text(deletionError ?? "")}
             .onChange(of:deck?.mainArtworks) {_,_ in draw=DeckDrawState()}
+            .navigationDestination(item:$localDestination) { DeckConfirmationScreen(deckID:$0) }
     }
-    private func section(_ title:String,cards:[DeckCard],legacy:Int?=nil)->some View {
-        VStack(alignment:.leading,spacing:14) {
-            HStack { Text(title).font(.headline);Spacer();Text("\(legacy ?? cards.count)").font(.subheadline.monospacedDigit()).foregroundStyle(Design.secondary) }
+    private func section(_ title: String, cards: [DeckCard], legacy: Int? = nil) -> some View {
+        DeckCardPanel(title: title, format: format, cards: cards, legacyCount: legacy) { selected = $0 }
+    }
+}
+
+private struct DeckCardPanel: View {
+    @Environment(CardCatalog.self) private var catalog
+    let title: String
+    let format: CardFormat
+    let cards: [DeckCard]
+    var legacyCount: Int? = nil
+    let select: (DeckDetailRoute) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Text(title).font(.headline)
+                Spacer()
+                Text("\(legacyCount ?? cards.count)").font(.subheadline.monospacedDigit()).foregroundStyle(Design.secondary)
+            }
             if cards.isEmpty {
-                Text(legacy == nil ? "暂无卡牌":"旧版卡组尚未录入逐张清单").font(.caption).foregroundStyle(Design.secondary).frame(maxWidth:.infinity,minHeight:42)
+                Text(legacyCount == nil ? "暂无卡牌" : "旧版卡组尚未录入逐张清单")
+                    .font(.caption).foregroundStyle(Design.secondary).frame(maxWidth: .infinity, minHeight: 42)
             } else {
-                LazyVGrid(columns:Array(repeating:GridItem(.flexible(),spacing:7),count:5),spacing:11) {
-                    ForEach(Array(cards.enumerated()),id:\.offset) { _,artwork in
-                        Button { Task { if let card=try? await catalog.database.details(cid:artwork.cid).card {selected=DeckDetailRoute(card:card,artwork:artwork)} } } label:{DeckCardArtwork(artwork:artwork,format:format)}
-                            .buttonStyle(.plain).accessibilityIdentifier("deck.card.\(artwork.id)")
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 7), count: 5), spacing: 11) {
+                    ForEach(Array(cards.enumerated()), id: \.offset) { _, artwork in
+                        Button {
+                            Task {
+                                if let card = try? await catalog.database.details(cid: artwork.cid).card {
+                                    select(DeckDetailRoute(card: card, artwork: artwork))
+                                }
+                            }
+                        } label: {
+                            DeckCardArtwork(artwork: artwork, format: format)
+                        }.buttonStyle(.plain).accessibilityIdentifier("deck.card.\(artwork.id)")
                     }
                 }.accessibilityIdentifier("deck.zone.\(title)")
             }
@@ -443,21 +649,281 @@ struct DeckCardQuantityControls:View {
     init(session:DeckEditingSession,card:CatalogCard,ciid:Int64) {self.session=session;self.card=card;self.ciid=ciid;_side=State(initialValue:session.zone == .side)}
     private var copies:Int {session.count(cid:card.cid,side:side)}
     private var canAdd:Bool {session.total(cid:card.cid)<3 && session.state[session.destination(for:card,side:side)].count<session.destination(for:card,side:side).capacity}
+    private var primaryZone:DeckZone {session.destination(for:card,side:false)}
+    private var destination:DeckZone {session.destination(for:card,side:side)}
+    private var summary:String {
+        "\(primaryZone == .extra ? "额外" : "主") \(session.count(cid:card.cid,side:false)) · 副 \(session.count(cid:card.cid,side:true))"
+    }
+    private var limitSummary:String {
+        let total=session.total(cid:card.cid)
+        if total>=3 {return "合计 3/3 · 已达上限"}
+        if session.state[destination].count>=destination.capacity {return "\(destination.rawValue)已满"}
+        return "合计 \(total)/3"
+    }
     var body:some View {
-        HStack(spacing:14) {
-            Button {session.remove(card,ciid:ciid,side:side)} label:{Image(systemName:"minus").font(.system(size:18,weight:.medium)).frame(width:32,height:32)}
-                .buttonStyle(.bordered).buttonBorderShape(.circle).controlSize(.large).disabled(copies==0).accessibilityLabel("减少投入").accessibilityIdentifier("deck.card.minus")
-            Button {side.toggle();session.zone=session.destination(for:card,side:side)} label:{
-                HStack(spacing:10) {
-                    Image(systemName:"arrow.trianglehead.2.clockwise.rotate.90").font(.system(size:17,weight:.medium))
-                    VStack(spacing:2) {
-                        Text(side ? "副卡组":"主卡组").font(.subheadline.weight(.medium))
-                        Text("主 \(session.count(cid:card.cid,side:false)) · 副 \(session.count(cid:card.cid,side:true))").font(.caption2.monospacedDigit()).foregroundStyle(Design.secondary)
+        VStack(spacing:8) {
+            ViewThatFits(in:.horizontal) {
+                HStack(spacing:12) {
+                    destinationControl
+                    quantityControl
+                }.frame(maxWidth:.infinity)
+                VStack(spacing:10) {
+                    destinationControl
+                    quantityControl.frame(maxWidth:.infinity)
+                }
+            }
+            HStack(alignment:.firstTextBaseline,spacing:12) {
+                Text(summary)
+                Spacer(minLength:0)
+                Text(limitSummary)
+            }.font(.caption.monospacedDigit()).foregroundStyle(Design.secondary)
+        }.padding(.horizontal,18).padding(.vertical,12)
+            .frame(maxWidth:.infinity).background(Design.canvas)
+            .overlay(alignment:.top) {Divider()}
+    }
+    private var destinationControl:some View {
+        HStack(spacing:4) {
+            destinationButton(primaryZone,side:false)
+            destinationButton(.side,side:true)
+        }.padding(4).frame(minWidth:184)
+            .background(Design.field,in:RoundedRectangle(cornerRadius:14))
+            .overlay {RoundedRectangle(cornerRadius:14).strokeBorder(Color(uiColor:.separator),lineWidth:0.5)}
+            .accessibilityElement(children:.contain).accessibilityLabel("投入区域")
+            .accessibilityIdentifier("deck.card.destination")
+    }
+    private func destinationButton(_ zone:DeckZone,side value:Bool)->some View {
+        Button {side=value;session.zone=zone} label:{
+            Text(zone.rawValue).font(.subheadline.weight(side == value ? .semibold:.regular))
+                .foregroundStyle(side == value ? Design.ink:Design.secondary)
+                .padding(.horizontal,12).frame(maxWidth:.infinity,minHeight:44)
+                .background(side == value ? Color(uiColor:.tertiarySystemBackground):.clear,in:RoundedRectangle(cornerRadius:10))
+                .contentShape(RoundedRectangle(cornerRadius:10))
+        }.buttonStyle(.plain).accessibilityAddTraits(side == value ? .isSelected:[])
+            .accessibilityHint("选择增减卡牌的区域")
+            .accessibilityIdentifier("deck.card.destination."+zone.id)
+    }
+    private var quantityControl:some View {
+        HStack(spacing:0) {
+            quantityButton("minus",enabled:copies>0,label:"减少投入",identifier:"deck.card.minus") {
+                session.remove(card,ciid:ciid,side:side)
+            }
+            Text("\(copies)").font(.title3.weight(.semibold).monospacedDigit()).foregroundStyle(Design.ink)
+                .frame(minWidth:40,minHeight:44)
+                .accessibilityLabel("\(destination.rawValue)投入 \(copies) 张")
+                .accessibilityIdentifier("deck.card.quantity")
+            quantityButton("plus",enabled:canAdd,label:"增加投入",identifier:"deck.card.plus") {
+                session.add(card,ciid:ciid,side:side)
+            }
+        }.padding(4).background(Design.field,in:RoundedRectangle(cornerRadius:14))
+            .overlay {RoundedRectangle(cornerRadius:14).strokeBorder(Color(uiColor:.separator),lineWidth:0.5)}
+            .fixedSize(horizontal:true,vertical:false)
+    }
+    private func quantityButton(_ symbol:String,enabled:Bool,label:String,identifier:String,action:@escaping ()->Void)->some View {
+        Button(action:action) {
+            Image(systemName:symbol).font(.system(size:17,weight:.semibold))
+                .foregroundStyle(enabled ? Design.accent:Design.secondary)
+                .frame(width:44,height:44).contentShape(Rectangle())
+        }.buttonStyle(.plain).disabled(!enabled).accessibilityLabel(label).accessibilityIdentifier(identifier)
+    }
+
+}
+
+struct RemoteDeckPlazaScreen: View {
+    @Environment(AccountStore.self) private var account
+
+    var body: some View {
+        RemoteDeckListScreen().id(account.sessionVersion)
+            .navigationTitle("卡组广场").navigationBarTitleDisplayMode(.large)
+    }
+}
+
+private struct RemoteDeckListScreen: View {
+    @Environment(AccountStore.self) private var account
+    @Environment(AppStore.self) private var store
+    @State private var decks: [Deck]?
+    @State private var loadedUserID:String?
+    @State private var failure: String?
+    @State private var loading = false
+    @State private var showingLogin = false
+
+    var body: some View {
+        Group {
+            if !account.isLoggedIn {
+                ContentUnavailableView {
+                    Label("一起来决斗 · 我的牌组", systemImage: "person.crop.circle")
+                } description: {
+                    Text("登录一起来决斗账号后查看。")
+                } actions: {
+                    Button("登录") { showingLogin = true }.buttonStyle(.borderedProminent)
+                }
+            } else if let decks {
+                DeckLibraryScreen(serverDecks:decks,deleteServerDeck:remove)
+                    .refreshable { await reload() }
+                    .safeAreaInset(edge:.bottom) {
+                        if let failure { Text(failure).font(.footnote).padding().foregroundStyle(.secondary) }
                     }
-                }.frame(maxWidth:.infinity,minHeight:32)
-            }.secondaryActionStyle().accessibilityIdentifier("deck.card.destination")
-            Button {session.add(card,ciid:ciid,side:side)} label:{Image(systemName:"plus").font(.system(size:18,weight:.medium)).frame(width:32,height:32)}
-                .buttonStyle(.bordered).buttonBorderShape(.circle).controlSize(.large).disabled(!canAdd).accessibilityLabel("增加投入").accessibilityIdentifier("deck.card.plus")
-        }.foregroundStyle(Design.ink).padding(.horizontal,22).padding(.vertical,10)
+            } else if let failure {
+                ContentUnavailableView {
+                    Label("无法加载牌组", systemImage: "icloud.slash")
+                } description: {
+                    Text(failure)
+                } actions: {
+                    Button("重试") { Task { await reload() } }.buttonStyle(.bordered)
+                }
+            } else {
+                ProgressView("正在读取牌组")
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Design.canvas)
+        .task { if decks == nil { await reload() } }
+        .sheet(isPresented: $showingLogin) { LoginSheet() }
+    }
+
+    private func reload() async {
+        guard account.isLoggedIn, !loading else { return }
+        loading = true
+        failure = nil
+        defer { loading = false }
+        do {
+            let session = try await RemoteDeckSession(account: account)
+            let summaries = try await session.list()
+            var snapshots:[Deck]=[]
+            for summary in summaries {
+                let detail=try await session.detail(summary)
+                snapshots.append(try detail.deckSnapshot())
+            }
+            loadedUserID=session.userID
+            decks=snapshots
+        } catch {
+            if !(error is CancellationError) { failure = AccountStore.message(for: error) }
+        }
+    }
+    private func remove(_ deck:Deck) async throws {
+        guard let loadedUserID,loadedUserID==account.session?.userID else {throw CancellationError()}
+        let session=try await RemoteDeckSession(account:account)
+        try await session.delete(id:deck.id)
+        store.forgetRemoteDeck(deck.id,userID:session.userID)
+        decks?.removeAll {$0.id==deck.id}
+    }
+}
+
+struct RemoteDeckUploadScreen: View {
+    @Environment(AccountStore.self) private var account
+    @Environment(AppStore.self) private var store
+    @Environment(CardCatalog.self) private var catalog
+    @Environment(\.dismiss) private var dismiss
+    let deck: Deck
+    var onSaved: ((String) -> Void)? = nil
+    @State private var saving = false
+    @State private var showingLogin = false
+    @State private var failure: String?
+    @State private var completed = false
+    @State private var missingRemoteID:String?
+    @State private var confirmingReupload=false
+
+    private var local: Deck { store.myDecks.first { $0.id == deck.id } ?? deck }
+    private var linked: Bool {
+        guard let userID = account.session?.userID else { return false }
+        return local.remoteDeckIDs?[userID] != nil
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    DeckListRow(deck:local,format:local.banlist.flatMap(CardFormat.init(rawValue:)) ?? catalog.selectedFormat)
+                        .padding(.vertical,6)
+                } footer: {
+                    if account.isLoggedIn && !completed {
+                        Text(linked ? "更新一起来决斗中已关联的卡组。" : "上传为非公开卡组，并与本地卡组关联。之后可在本地修改，再次上传。")
+                    }
+                }
+                if let failure {Section {Text(failure).font(.footnote).foregroundStyle(Design.secondary)}}
+                if completed {Section {Label("已上传到一起来决斗",systemImage:"checkmark.circle.fill").foregroundStyle(.green)}}
+            }.listStyle(.insetGrouped).scrollContentBackground(.hidden).background(Design.canvas)
+            .navigationTitle("上传卡组").navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    ModalCloseButton().disabled(saving)
+                }
+            }
+            .safeAreaInset(edge:.bottom) {
+                DeckActionBar {
+                    if !account.isLoggedIn {
+                        AccentButton(title:"登录一起来决斗") {showingLogin=true}
+                    } else if completed {
+                        AccentButton(title:"完成") {dismiss()}
+                    } else if missingRemoteID != nil {
+                        AccentButton(title:"重新上传为新卡组",isLoading:saving) {confirmingReupload=true}
+                    } else {
+                        AccentButton(title:saving ? "正在上传" : "上传卡组",isLoading:saving) {
+                            saving=true
+                            Task {await upload()}
+                        }
+                    }
+                }
+            }
+            .sheet(isPresented: $showingLogin) { LoginSheet() }
+            .confirmationDialog("重新上传为新卡组？",isPresented:$confirmingReupload,titleVisibility:.visible) {
+                Button("新建非公开卡组并关联") {
+                    missingRemoteID=nil
+                    saving=true
+                    Task {await upload()}
+                }
+            } message:{Text("原服务端卡组已删除，此操作会将当前本地卡组上传为一份新的非公开卡组。")}
+            .onChange(of: account.sessionVersion) { _, _ in
+                completed = false
+                failure = nil
+                missingRemoteID=nil
+            }
+            .interactiveDismissDisabled(saving)
+        }
+    }
+
+    private func upload() async {
+        failure = nil
+        defer { saving = false }
+        do {
+            let local = self.local
+            let format = local.banlist.flatMap(CardFormat.init(rawValue:)) ?? catalog.selectedFormat
+            let session = try await RemoteDeckSession(account: account)
+            let list = try await session.list()
+            let draftName = "Vrains-\(local.id)"
+            let detail: RemoteDeckDetail
+            let cards: [RemoteDeckCard]
+            if let id = local.remoteDeckIDs?[session.userID] {
+                guard let linked = list.first(where: { $0.id == id }) else {
+                    store.forgetRemoteDeck(id,userID:session.userID)
+                    missingRemoteID=id
+                    failure="关联的服务端卡组已删除。本地卡组已保留，可以重新上传为新卡组。"
+                    return
+                }
+                detail = try await session.detail(linked)
+                let existingCards = detail.summary.format == format ? detail.cards : []
+                cards = try await RemoteDeckCard.payload(for: local, format: format, keeping: existingCards, database: catalog.database)
+            } else {
+                cards = try await RemoteDeckCard.payload(for: local, format: format, keeping: [], database: catalog.database)
+                let summary: RemoteDeckSummary
+                if let draft = list.first(where: { $0.name == draftName && $0.status == "非公开" }) {
+                    summary = draft
+                } else {
+                    try await session.createDraft(name: draftName)
+                    guard let draft = try await session.list().first(where: { $0.name == draftName && $0.status == "非公开" }) else {
+                        throw RemoteDeckError.ambiguousCreate
+                    }
+                    summary = draft
+                }
+                store.rememberRemoteDeck(summary.id, for: local.id, userID: session.userID)
+                detail = try await session.detail(summary)
+            }
+            var write = local
+            write.banlist = format.rawValue
+            try await session.save(deck: write, replacing: detail, cards: cards)
+            completed = true
+            onSaved?(detail.summary.id)
+        } catch {
+            if !(error is CancellationError) { failure = AccountStore.message(for: error) }
+        }
     }
 }

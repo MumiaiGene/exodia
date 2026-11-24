@@ -50,7 +50,6 @@ struct ContentView: View {
                 }
             }
             .tint(Design.accent)
-            .environment(\.locale,Locale(identifier:"zh_CN"))
             .environment(store).environment(store.account).environment(store.jhs).environment(store.news)
             .environment(store.matches).environment(store.catalog)
             .environment(duel).environment(location)

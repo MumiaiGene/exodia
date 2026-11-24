@@ -82,6 +82,18 @@ struct CollectionCard:Codable,Identifiable,Sendable {
     let id:Int64;let name:String
     var rarities:[CollectionRarity]=[]
 }
+struct CollectionCardArtwork:Identifiable,Sendable {
+    let cid:Int64
+    let name:String
+    let ciid:Int64?
+    var rarities:[CollectionRarity]
+    var id:String {"\(cid):\(ciid ?? 0)"}
+}
+private struct CollectionCardSelection:Identifiable {
+    let card:CatalogCard
+    let ciid:Int64?
+    var id:String {"\(card.cid):\(ciid ?? 0)"}
+}
 struct CollectionCategory:Identifiable,Equatable {
     let id:Int;let title:String
     static func options(_ locale:String)->[Self] {
@@ -223,21 +235,21 @@ struct CollectionScreen:View {
 struct CollectionPackScreen:View {
     let pack:CollectionPack
     @Environment(CardCatalog.self) private var catalog
-    @State private var entries:[CollectionCard]=[]
+    @State private var entries:[CollectionCardArtwork]=[]
     @State private var cards:[Int64:CatalogCard]=[:]
     @State private var rarity=""
     private var rarities:[CollectionRarity] {
         var seen=Set<String>()
         return entries.flatMap(\.rarities).filter{seen.insert($0.identity).inserted}.sorted(by:CollectionRarity.precedes)
     }
-    private var visible:[CollectionCard] {entries.filter{rarity.isEmpty || $0.rarities.contains{$0.identity == rarity}}}
-    @State private var selected:CatalogCard?
+    private var visible:[CollectionCardArtwork] {entries.filter{rarity.isEmpty || $0.rarities.contains{$0.identity == rarity}}}
+    @State private var selected:CollectionCardSelection?
     @State private var busy=false
     @State private var message:String?
     var body:some View {
         VStack(alignment:.leading,spacing:10) {
             Text(pack.name).font(.title3.bold()).padding(.horizontal,20)
-            Text(pack.date+" · 收录 \(entries.count) 种卡牌").font(.caption).foregroundStyle(Design.secondary).padding(.horizontal,20).accessibilityIdentifier("collection.cards.count")
+            Text(pack.date+" · 收录 \(Set(entries.map(\.cid)).count) 种卡牌").font(.caption).foregroundStyle(Design.secondary).padding(.horizontal,20).accessibilityIdentifier("collection.cards.count")
             ScrollView(.horizontal,showsIndicators:false) {
                 HStack(spacing:8) {
                     Button {rarity=""} label:{RarityChip(rarity:.init(code:"全部",name:"全部罕贵度",colorHex:"#9c9c9c"),selected:rarity.isEmpty,filter:true)}
@@ -252,15 +264,14 @@ struct CollectionPackScreen:View {
             if busy,entries.isEmpty {ProgressView().frame(maxWidth:.infinity,maxHeight:.infinity)}
             else {
                 List(visible) {entry in
-                    Button {selected=cards[entry.id]} label:{
+                    Button {if let card=cards[entry.cid] {selected=CollectionCardSelection(card:card,ciid:entry.ciid)}} label:{
                         HStack(alignment:.top,spacing:14) {
-                            CardArtwork(cid:entry.id).frame(width:46,height:67).accessibilityHidden(true)
+                            CardArtwork(cid:entry.cid,ciid:entry.ciid).frame(width:46,height:67).accessibilityHidden(true)
                             VStack(alignment:.leading,spacing:8) {
-                                Text(cards[entry.id]?.name ?? entry.name).font(.system(size:15,weight:.medium)).foregroundStyle(Design.ink)
+                                Text(cards[entry.cid]?.name ?? entry.name).font(.system(size:15,weight:.medium)).foregroundStyle(Design.ink)
                                 RarityFlow {
                                     ForEach(entry.rarities.sorted(by:CollectionRarity.precedes),id:\.identity){RarityChip(rarity:$0)}
                                 }
-
                             }
                             Spacer()
                         }.padding(.vertical,4).contentShape(Rectangle())
@@ -268,18 +279,20 @@ struct CollectionPackScreen:View {
                 }.listStyle(.plain).scrollContentBackground(.hidden)
             }
         }.padding(.top,10).background(Design.canvas).navigationTitle("卡包收录").navigationBarTitleDisplayMode(.inline)
-            .task{await load()}.sheet(item:$selected){CatalogCardDetailScreen(card:$0)}
+            .task(id:"\(catalog.revision)-\(catalog.artworkRevision)"){await load()}
+            .sheet(item:$selected){CatalogCardDetailScreen(card:$0.card,initialArtwork:$0.ciid ?? 0)}
 
     }
-    @MainActor private func install(_ values:[CollectionCard]) async {
-        let local=(try? await catalog.database.banlistCards(cids:values.map(\.id))) ?? [:]
-        guard !Task.isCancelled else{return};cards=local;entries=values
-    }
-    @MainActor private func load(force:Bool=false) async {
+    @MainActor private func load()async {
         busy=true;defer{busy=false};message=nil
-        if let cached=try? await catalog.database.collectionCards(pack),!cached.isEmpty {await install(cached)}
-        do {let values=try await CollectionService.cards(pack,database:catalog.database,force:force);try Task.checkCancellation();await install(values)}
-        catch is CancellationError {} catch {message=entries.isEmpty ? "暂时无法获取卡包内容，请稍后更新。":"暂时无法更新，正在显示本地收录。"}
+        do {
+            let values=try await catalog.database.collectionCardArtworks(pack)
+            let local=try await catalog.database.banlistCards(cids:Array(Set(values.map(\.cid))))
+            try Task.checkCancellation()
+            cards=local;entries=values
+        } catch is CancellationError {} catch {
+            message=entries.isEmpty ? "暂时无法获取卡包内容，请稍后更新。":"暂时无法更新，正在显示本地收录。"
+        }
     }
 }
 

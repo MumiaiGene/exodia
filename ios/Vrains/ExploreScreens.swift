@@ -7,7 +7,7 @@ struct DecksScreen: View {
         NavigationStack {
             HubGrid(items:[
                 HubItem(id:DeckHubRoute.library.rawValue,title:"卡组",subtitle:"管理自己的构筑",symbol:"rectangle.stack.fill",colors:[0x3657B7,0x182449]),
-                HubItem(id:DeckHubRoute.plaza.rawValue,title:"卡组广场",subtitle:"",symbol:"square.grid.2x2.fill",colors:[0x7956A8,0x35234F],available:false),
+                HubItem(id:DeckHubRoute.plaza.rawValue,title:"卡组广场",subtitle:"线上卡组构筑",symbol:"square.grid.2x2.fill",colors:[0x7956A8,0x35234F]),
                 HubItem(id:DeckHubRoute.collection.rawValue,title:"收录",subtitle:"浏览卡包与版本",symbol:"shippingbox.fill",colors:[0xC06A3C,0x63331F]),
                 HubItem(id:DeckHubRoute.banlist.rawValue,title:"禁限卡表",subtitle:"查看和切换规则环境",symbol:"exclamationmark.shield.fill",colors:[0xC74E5B,0x6A2530])
             ]) { item in NavigationLink(value:DeckHubRoute(rawValue:item.id)!) { HubTile(item:item) } }
@@ -15,7 +15,7 @@ struct DecksScreen: View {
             .navigationDestination(for:DeckHubRoute.self) { route in
                 switch route {
                 case .library: DeckLibraryScreen()
-                case .plaza: HubPlaceholderScreen(title:"卡组广场",symbol:"square.grid.2x2.fill",subtitle:"尚未开放")
+                case .plaza: RemoteDeckPlazaScreen()
                 case .collection: CollectionScreen()
                 case .banlist: BanlistHubScreen()
                 }
